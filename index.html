@@ -29,25 +29,20 @@
         }
         @media (max-width: 768px) and (orientation: portrait) {
             body::before {
-                content: "ПОВЕРНИТЕ ЭКРАН";
+                content: "ПОВЕРНИТЕ ЭКРАН ГОРИЗОНТАЛЬНО";
                 position: fixed;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 100%;
+                inset: 0;
                 background: #000;
-                color: white;
-                font-size: 24px;
+                color: #fff;
+                font-size: 28px;
                 font-weight: bold;
                 display: flex;
                 align-items: center;
                 justify-content: center;
                 text-align: center;
                 z-index: 9999;
-                font-family: 'Arial', sans-serif;
-                letter-spacing: 4px;
-                text-shadow: 0 0 10px rgba(255,255,255,0.5);
-                border: 4px solid #fff;
+                font-family: Arial, sans-serif;
+                letter-spacing: 3px;
             }
             canvas, #joystickZone {
                 display: none !important;
@@ -57,25 +52,21 @@
             display: block;
             width: 100%;
             height: 100%;
-            object-fit: cover;
             image-rendering: crisp-edges;
             image-rendering: pixelated;
         }
         #joystickZone {
             position: fixed;
-            bottom: 30px;
-            left: 30px;
-            width: 140px;
-            height: 140px;
+            bottom: 40px;
+            left: 40px;
+            width: 160px;
+            height: 160px;
             z-index: 100;
             border-radius: 50%;
-            background: rgba(30, 30, 40, 0.7);
-            backdrop-filter: blur(8px);
-            border: 3px solid rgba(255, 215, 0, 0.6);
-            box-shadow: 0 0 20px rgba(255, 215, 0, 0.3);
-            display: block;
+            background: rgba(40,40,60,0.65);
+            border: 3px solid rgba(220,180,0,0.7);
+            box-shadow: 0 0 25px rgba(220,180,0,0.4);
             touch-action: none;
-            pointer-events: auto;
         }
     </style>
 </head>
@@ -89,218 +80,202 @@
             if (window.Telegram?.WebApp) {
                 Telegram.WebApp.ready();
                 Telegram.WebApp.expand();
-                Telegram.WebApp.setHeaderColor?.('#000000');
-                Telegram.WebApp.setBottomBarColor?.('#000000');
+                Telegram.WebApp.setHeaderColor('#000000');
+                Telegram.WebApp.setBackgroundColor('#000000');
             }
 
             const canvas = document.getElementById('gameCanvas');
             const ctx = canvas.getContext('2d');
             ctx.imageSmoothingEnabled = false;
 
-            // ==============================================
-            // НАСТРОЙКИ
-            // ==============================================
-            const TILE_SIZE = 64;
-            const IDLE_WIDTH  = 48;
-            const IDLE_HEIGHT = 64;
-            const RUN_WIDTH   = 56;
-            const RUN_HEIGHT  = 64;
+            // ────────────────────────────────────────────────
+            // РАЗМЕРЫ (адаптированы под мобильные)
+            // ────────────────────────────────────────────────
+            const TILE_SIZE = window.innerWidth < 768 ? 48 : 64;
 
-            const WORLD_WIDTH  = 30;
-            const WORLD_HEIGHT = 15;
+            const IDLE_WIDTH  = 40;
+            const IDLE_HEIGHT = 56;
+            const RUN_WIDTH   = 48;
+            const RUN_HEIGHT  = 56;
+
+            const WORLD_WIDTH  = window.innerWidth < 768 ? 18 : 24;
+            const WORLD_HEIGHT = window.innerWidth < 768 ? 11 : 14;
 
             const WORLD_PIXEL_WIDTH  = WORLD_WIDTH  * TILE_SIZE;
             const WORLD_PIXEL_HEIGHT = WORLD_HEIGHT * TILE_SIZE;
 
             let canvasWidth, canvasHeight;
 
-            // Пути к спрайтам (замени на свои файлы)
-            const PLAYER_IDLE_IMAGE = 'baserun.png';
-            const PLAYER_RUN1_IMAGE = 'run1.png';
-            const PLAYER_RUN2_IMAGE = 'run2.png';
-            const PLAYER_RUN3_IMAGE = 'run3.png';
+            // Спрайты
+            const PLAYER_IDLE = 'baserun.png';
+            const PLAYER_RUN1 = 'run1.png';
+            const PLAYER_RUN2 = 'run2.png';
+            const PLAYER_RUN3 = 'run3.png';
 
             const playerImages = {
                 idle: new Image(),
                 run: [new Image(), new Image(), new Image()]
             };
 
-            function loadImage(src, imgElement) {
-                return new Promise((resolve) => {
-                    imgElement.onload = resolve;
-                    imgElement.onerror = () => {
-                        console.error('Ошибка загрузки:', src);
-                        const c = document.createElement('canvas');
-                        c.width = c.height = 64;
-                        const ct = c.getContext('2d');
-                        ct.fillStyle = '#FF4444';
-                        ct.fillRect(0,0,64,64);
-                        imgElement.src = c.toDataURL();
-                        resolve();
+            function loadImage(src, img) {
+                return new Promise(r => {
+                    img.onload = r;
+                    img.onerror = () => {
+                        console.warn('Не загрузился:', src);
+                        img.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="56"><rect width="100%" height="100%" fill="%23c00"/></svg>';
+                        r();
                     };
-                    imgElement.src = src;
+                    img.src = src;
                 });
             }
 
             Promise.all([
-                loadImage(PLAYER_IDLE_IMAGE, playerImages.idle),
-                loadImage(PLAYER_RUN1_IMAGE, playerImages.run[0]),
-                loadImage(PLAYER_RUN2_IMAGE, playerImages.run[1]),
-                loadImage(PLAYER_RUN3_IMAGE, playerImages.run[2])
+                loadImage(PLAYER_IDLE, playerImages.idle),
+                loadImage(PLAYER_RUN1, playerImages.run[0]),
+                loadImage(PLAYER_RUN2, playerImages.run[1]),
+                loadImage(PLAYER_RUN3, playerImages.run[2])
             ]);
 
             let player = {
-                x: (WORLD_PIXEL_WIDTH - IDLE_WIDTH) / 2,
-                y: (WORLD_PIXEL_HEIGHT - IDLE_HEIGHT) / 2,
+                x: WORLD_PIXEL_WIDTH / 2 - IDLE_WIDTH / 2,
+                y: WORLD_PIXEL_HEIGHT / 2 - IDLE_HEIGHT / 2,
                 vx: 0,
                 vy: 0,
-                speed: 1.2,
+                speed: 1.4,
                 facing: 1,
                 width: IDLE_WIDTH,
                 height: IDLE_HEIGHT,
                 isMoving: false
             };
 
-            let animationFrame = 0;
-            const ANIMATION_SPEED = 6;
-            let frameCounter = 0;
+            let animFrame = 0;
+            const ANIM_SPEED = 5;
+            let frameTick = 0;
 
             function getTileType(x, y) {
-                const noise1 = Math.sin(x * 0.2) * Math.cos(y * 0.2);
-                const noise2 = Math.sin(x * 0.1 + 2) * Math.cos(y * 0.15 + 1);
-                const combined = noise1 * 0.7 + noise2 * 0.3;
-                if (combined > 0.4) return 'grass';
-                if (combined < -0.3) return 'water';
-                if (Math.abs(combined) < 0.1) return 'path';
+                const n = Math.sin(x*0.25) * Math.cos(y*0.22) + Math.sin(x*0.18 + 3)*0.4;
+                if (n > 0.35) return 'grass';
+                if (n < -0.25) return 'water';
+                if (Math.abs(n) < 0.08) return 'path';
                 return 'dirt';
             }
 
-            const TILE_COLORS = {
-                grass: '#4A7C59',
-                dirt:  '#8B7355',
-                water: '#4A90E2',
-                path:  '#C0A080'
+            const COLORS = {
+                grass: '#3a6c4a',
+                dirt:  '#7a6348',
+                water: '#3a78c2',
+                path:  '#b89a70'
             };
 
             function drawBackground() {
-                const grad = ctx.createLinearGradient(0, 0, 0, WORLD_PIXEL_HEIGHT);
-                grad.addColorStop(0,   '#1a1f2e');
-                grad.addColorStop(0.3, '#2a2f3e');
-                grad.addColorStop(0.7, '#1f2a2f');
-                grad.addColorStop(1,   '#152025');
-                ctx.fillStyle = grad;
-                ctx.fillRect(0, 0, WORLD_PIXEL_WIDTH, WORLD_PIXEL_HEIGHT);
+                // простой градиент неба
+                const g = ctx.createLinearGradient(0,0,0,WORLD_PIXEL_HEIGHT);
+                g.addColorStop(0, '#0f172a');
+                g.addColorStop(1, '#1e293b');
+                ctx.fillStyle = g;
+                ctx.fillRect(0,0,WORLD_PIXEL_WIDTH,WORLD_PIXEL_HEIGHT);
 
                 for (let y = 0; y < WORLD_HEIGHT; y++) {
                     for (let x = 0; x < WORLD_WIDTH; x++) {
-                        const type = getTileType(x, y);
-                        ctx.fillStyle = TILE_COLORS[type];
-                        ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+                        const t = getTileType(x, y);
+                        ctx.fillStyle = COLORS[t];
+                        ctx.fillRect(x*TILE_SIZE, y*TILE_SIZE, TILE_SIZE, TILE_SIZE);
                     }
                 }
             }
 
             function drawPlayer() {
-                let currentImage;
-                let currentWidth, currentHeight;
+                let img, w, h;
 
                 if (player.isMoving) {
-                    currentWidth = RUN_WIDTH;
-                    currentHeight = RUN_HEIGHT;
-                    frameCounter++;
-                    if (frameCounter >= ANIMATION_SPEED) {
-                        frameCounter = 0;
-                        animationFrame = (animationFrame + 1) % 3;
+                    w = RUN_WIDTH;
+                    h = RUN_HEIGHT;
+                    frameTick++;
+                    if (frameTick >= ANIM_SPEED) {
+                        frameTick = 0;
+                        animFrame = (animFrame + 1) % 3;
                     }
-                    currentImage = playerImages.run[animationFrame];
+                    img = playerImages.run[animFrame];
                 } else {
-                    currentWidth = IDLE_WIDTH;
-                    currentHeight = IDLE_HEIGHT;
-                    currentImage = playerImages.idle;
+                    w = IDLE_WIDTH;
+                    h = IDLE_HEIGHT;
+                    img = playerImages.idle;
                 }
 
-                player.width = currentWidth;
-                player.height = currentHeight;
+                player.width = w;
+                player.height = h;
 
                 ctx.save();
 
-                if (currentImage && currentImage.complete && currentImage.naturalHeight !== 0) {
+                if (img.complete && img.naturalHeight !== 0) {
                     if (player.facing === -1) {
-                        ctx.translate(player.x + currentWidth, player.y);
+                        ctx.translate(player.x + w, player.y);
                         ctx.scale(-1, 1);
-                        ctx.drawImage(currentImage, 0, 0, currentWidth, currentHeight);
+                        ctx.drawImage(img, 0, 0, w, h);
                     } else {
-                        ctx.drawImage(currentImage, player.x, player.y, currentWidth, currentHeight);
+                        ctx.drawImage(img, player.x, player.y, w, h);
                     }
                 } else {
-                    ctx.fillStyle = '#FF4444';
-                    ctx.fillRect(player.x, player.y, currentWidth, currentHeight);
+                    ctx.fillStyle = '#e53e3e';
+                    ctx.fillRect(player.x, player.y, w, h);
                 }
 
                 ctx.restore();
             }
 
             function update() {
-                const currentWidth  = player.isMoving ? RUN_WIDTH  : IDLE_WIDTH;
-                const currentHeight = player.isMoving ? RUN_HEIGHT : IDLE_HEIGHT;
+                const cw = player.isMoving ? RUN_WIDTH : IDLE_WIDTH;
+                const ch = player.isMoving ? RUN_HEIGHT : IDLE_HEIGHT;
 
                 player.x += player.vx;
                 player.y += player.vy;
 
-                player.x = Math.max(0, Math.min(WORLD_PIXEL_WIDTH - currentWidth, player.x));
-                player.y = Math.max(0, Math.min(WORLD_PIXEL_HEIGHT - currentHeight, player.y));
+                player.x = Math.max(0, Math.min(WORLD_PIXEL_WIDTH - cw, player.x));
+                player.y = Math.max(0, Math.min(WORLD_PIXEL_HEIGHT - ch, player.y));
 
-                player.vx *= 0.85;
-                player.vy *= 0.85;
-                if (Math.abs(player.vx) < 0.1) player.vx = 0;
-                if (Math.abs(player.vy) < 0.1) player.vy = 0;
+                player.vx *= 0.84;
+                player.vy *= 0.84;
+
+                if (Math.abs(player.vx) < 0.08) player.vx = 0;
+                if (Math.abs(player.vy) < 0.08) player.vy = 0;
 
                 const wasMoving = player.isMoving;
-                player.isMoving = (Math.abs(player.vx) > 0.1 || Math.abs(player.vy) > 0.1);
+                player.isMoving = Math.abs(player.vx) > 0.08 || Math.abs(player.vy) > 0.08;
 
                 if (player.vx !== 0) player.facing = player.vx > 0 ? 1 : -1;
 
-                // Корректировка центра при смене анимации
+                // центрируем при смене состояния
                 if (wasMoving && !player.isMoving) {
-                    const centerX = player.x + RUN_WIDTH / 2;
-                    player.x = centerX - IDLE_WIDTH / 2;
-                    player.x = Math.max(0, Math.min(WORLD_PIXEL_WIDTH - IDLE_WIDTH, player.x));
-                    animationFrame = 0;
-                    frameCounter = 0;
+                    player.x += (RUN_WIDTH - IDLE_WIDTH) / 2;
                 }
                 if (!wasMoving && player.isMoving) {
-                    const centerX = player.x + IDLE_WIDTH / 2;
-                    player.x = centerX - RUN_WIDTH / 2;
-                    player.x = Math.max(0, Math.min(WORLD_PIXEL_WIDTH - RUN_WIDTH, player.x));
+                    player.x += (IDLE_WIDTH - RUN_WIDTH) / 2;
                 }
             }
 
             // ────────────────────────────────────────────────
-            // Клавиатура
+            // Клавиатура (для ПК)
             // ────────────────────────────────────────────────
             const keys = {};
-            document.addEventListener('keydown', e => {
+            window.addEventListener('keydown', e => {
                 keys[e.key.toLowerCase()] = true;
-                if (['arrowup','arrowdown','arrowleft','arrowright','w','a','s','d'].includes(e.key.toLowerCase())) {
-                    e.preventDefault();
-                }
             });
-            document.addEventListener('keyup', e => {
+            window.addEventListener('keyup', e => {
                 keys[e.key.toLowerCase()] = false;
             });
 
-            function handleKeyboard() {
+            function handleKeys() {
                 let dx = 0, dy = 0;
-                if (keys['a'] || keys['arrowleft']) dx -= 1;
-                if (keys['d'] || keys['arrowright']) dx += 1;
-                if (keys['w'] || keys['arrowup']) dy -= 1;
-                if (keys['s'] || keys['arrowdown']) dy += 1;
+                if (keys['a'] || keys['arrowleft']) dx--;
+                if (keys['d'] || keys['arrowright']) dx++;
+                if (keys['w'] || keys['arrowup']) dy--;
+                if (keys['s'] || keys['arrowdown']) dy++;
 
                 if (dx || dy) {
-                    const len = Math.sqrt(dx*dx + dy*dy);
-                    const targetSpeed = player.speed * 4;
-                    player.vx = (dx / len) * targetSpeed;
-                    player.vy = (dy / len) * targetSpeed;
+                    const len = Math.hypot(dx, dy);
+                    const spd = player.speed * 4.5;
+                    player.vx = dx / len * spd;
+                    player.vy = dy / len * spd;
                 }
             }
 
@@ -308,73 +283,71 @@
             // Джойстик
             // ────────────────────────────────────────────────
             let joystick = null;
-            const joystickZone = document.getElementById('joystickZone');
+            const zone = document.getElementById('joystickZone');
 
-            function initJoystick() {
+            function createJoystick() {
                 if (joystick) joystick.destroy();
-                if (typeof nipplejs !== 'undefined') {
-                    joystick = nipplejs.create({
-                        zone: joystickZone,
-                        mode: 'static',
-                        position: { left: '50%', bottom: '50%' },
-                        color: 'white',
-                        size: 120,
-                        threshold: 0.1
-                    });
+                joystick = nipplejs.create({
+                    zone: zone,
+                    mode: 'static',
+                    position: { left: '50%', top: '50%' },
+                    color: '#eee',
+                    size: 140,
+                    threshold: 0.08
+                });
 
-                    joystick.on('move', (evt, data) => {
-                        if (data.vector) {
-                            const targetSpeed = player.speed * 4;
-                            player.vx = data.vector.x * targetSpeed;
-                            player.vy = -data.vector.y * targetSpeed;
-                        }
-                    });
+                joystick.on('move', (e, data) => {
+                    if (data.vector) {
+                        const spd = player.speed * 4.5;
+                        player.vx = data.vector.x * spd;
+                        player.vy = -data.vector.y * spd;
+                    }
+                });
 
-                    joystick.on('end', () => {
-                        player.vx = player.vy = 0;
-                    });
-                }
+                joystick.on('end', () => {
+                    player.vx = player.vy = 0;
+                });
             }
 
-            function resizeCanvas() {
+            function resize() {
                 canvasWidth = window.innerWidth;
                 canvasHeight = window.innerHeight;
                 canvas.width = canvasWidth;
                 canvas.height = canvasHeight;
             }
 
-            function checkOrientation() {
-                if (window.innerWidth < window.innerHeight && window.innerWidth <= 768) {
-                    return false;
-                }
-                return true;
+            function isGoodOrientation() {
+                return !(window.innerWidth < window.innerHeight && window.innerWidth <= 768);
             }
 
             function init() {
-                resizeCanvas();
-                if (!checkOrientation()) return;
-                initJoystick();
+                resize();
+                if (!isGoodOrientation()) return;
+                createJoystick();
                 window.addEventListener('resize', () => {
-                    resizeCanvas();
-                    if (checkOrientation()) initJoystick();
+                    resize();
+                    if (isGoodOrientation()) createJoystick();
                 });
-                gameLoop();
-                setInterval(handleKeyboard, 16);
+                requestAnimationFrame(gameLoop);
+                setInterval(handleKeys, 16);
             }
 
             function gameLoop() {
                 ctx.clearRect(0, 0, canvasWidth, canvasHeight);
 
-                const scale = Math.min(
-                    canvasWidth / WORLD_PIXEL_WIDTH,
-                    canvasHeight / WORLD_PIXEL_HEIGHT
-                ) * 0.95;
+                const scale = Math.max(
+                    Math.min(
+                        canvasWidth  / WORLD_PIXEL_WIDTH,
+                        canvasHeight / WORLD_PIXEL_HEIGHT
+                    ),
+                    1.0
+                ) * 0.98;
 
-                const offsetX = (canvasWidth  - WORLD_PIXEL_WIDTH  * scale) / 2;
-                const offsetY = (canvasHeight - WORLD_PIXEL_HEIGHT * scale) / 2;
+                const ox = (canvasWidth  - WORLD_PIXEL_WIDTH  * scale) / 2;
+                const oy = (canvasHeight - WORLD_PIXEL_HEIGHT * scale) / 2;
 
                 ctx.save();
-                ctx.translate(offsetX, offsetY);
+                ctx.translate(ox, oy);
                 ctx.scale(scale, scale);
 
                 drawBackground();
