@@ -14,7 +14,7 @@
             user-select: none;
             -webkit-tap-highlight-color: transparent;
         }
-       
+
         html, body {
             width: 100%;
             height: 100%;
@@ -22,15 +22,14 @@
             position: fixed;
             background: #000;
         }
-       
+
         body {
             display: flex;
             justify-content: center;
             align-items: center;
             touch-action: pan-y pinch-zoom;
         }
-       
-        /* Блокировка вертикальной ориентации на телефонах */
+
         @media (max-width: 768px) and (orientation: portrait) {
             body::before {
                 content: "ПОВЕРНИТЕ ЭКРАН";
@@ -55,17 +54,16 @@
                 display: none !important;
             }
         }
-       
+
         canvas {
             display: block;
             width: 100%;
             height: 100%;
-            object-fit: fill; /* Растягиваем четко по размерам */
+            object-fit: fill;
             image-rendering: crisp-edges;
             image-rendering: pixelated;
         }
-       
-        /* Джойстик всегда виден в горизонтальной ориентации */
+
         #joystickZone {
             position: fixed;
             bottom: 30px;
@@ -81,16 +79,12 @@
             touch-action: none;
             pointer-events: auto;
         }
-       
-        /* Скрываем любой старый UI */
-        #ui {
-            display: none !important;
-        }
     </style>
 </head>
 <body>
     <canvas id="gameCanvas"></canvas>
     <div id="joystickZone"></div>
+
     <script>
         (function() {
             // Telegram Web App
@@ -99,106 +93,84 @@
                 Telegram.WebApp.expand();
                 Telegram.WebApp.setHeaderColor?.('#000000');
             }
+
             const canvas = document.getElementById('gameCanvas');
             const ctx = canvas.getContext('2d');
             ctx.imageSmoothingEnabled = false;
-            // Фиксированный размер тайла
-            const TILE_SIZE = 32;
-            const WORLD_WIDTH = 40; // Фиксированная ширина мира в тайлах
-            const WORLD_HEIGHT = 20; // Фиксированная высота мира в тайлах
+
+            // ==============================================
+            // НАСТРОЙКИ РАЗМЕРОВ ПЕРСОНАЖА
+            // ==============================================
+            // Размер тайла (базовая единица измерения для мира)
+            const TILE_SIZE = 16;
+
+            // РАЗМЕРЫ СТОЯЧЕГО ПЕРСОНАЖА (IDLE)
+            const IDLE_WIDTH = 32;     // Ширина в покое
+            const IDLE_HEIGHT = 48;    // Высота в покое
+
+            // РАЗМЕРЫ БЕГУЩЕГО ПЕРСОНАЖА (RUN)
+            const RUN_WIDTH = 40;       // Ширина при беге
+            const RUN_HEIGHT = 48;      // Высота при беге
+
+            // Примеры других вариантов:
+            // Приземистый бег: RUN_WIDTH = 48, RUN_HEIGHT = 32
+            // Вытянутый бег: RUN_WIDTH = 48, RUN_HEIGHT = 56
+            // Широкий бег: RUN_WIDTH = 64, RUN_HEIGHT = 48
+            // ==============================================
+
+            // Размеры мира (в тайлах)
+            const WORLD_WIDTH = 40;
+            const WORLD_HEIGHT = 20;
+
+            // Мир в пикселях
             const WORLD_PIXEL_WIDTH = WORLD_WIDTH * TILE_SIZE;
             const WORLD_PIXEL_HEIGHT = WORLD_HEIGHT * TILE_SIZE;
-           
+
             // Переменные для размеров canvas
             let canvasWidth, canvasHeight;
-            // Игрок
+
+            // ==============================================
+            // ПУТИ К ФОТОГРАФИЯМ ПЕРСОНАЖА
+            // ==============================================
+            const PLAYER_IDLE_IMAGE = 'baserun.png';
+            const PLAYER_RUN1_IMAGE = 'run1.png';
+            const PLAYER_RUN2_IMAGE = 'run2.png';
+            const PLAYER_RUN3_IMAGE = 'run3.png';
+            // ==============================================
+
+            // Загружаем все изображения
+            const playerImages = {
+                idle: new Image(),
+                run: [
+                    new Image(), // run1
+                    new Image(), // run2
+                    new Image()  // run3
+                ]
+            };
+
+            playerImages.idle.src = PLAYER_IDLE_IMAGE;
+            playerImages.run[0].src = PLAYER_RUN1_IMAGE;
+            playerImages.run[1].src = PLAYER_RUN2_IMAGE;
+            playerImages.run[2].src = PLAYER_RUN3_IMAGE;
+
+            // Игрок (начальные размеры - стоячего)
             let player = {
-                x: (WORLD_PIXEL_WIDTH - TILE_SIZE) / 2,
-                y: (WORLD_PIXEL_HEIGHT - TILE_SIZE) / 2,
+                x: (WORLD_PIXEL_WIDTH - IDLE_WIDTH) / 2,
+                y: (WORLD_PIXEL_HEIGHT - IDLE_HEIGHT) / 2,
                 vx: 0,
                 vy: 0,
-                speed: 1.5, // базовая скорость
+                speed: 0.5,
                 facing: 1,
-                size: TILE_SIZE
+                width: IDLE_WIDTH,
+                height: IDLE_HEIGHT,
+                isMoving: false
             };
-            // Цвета персонажа
-            const COLORS = {
-                skin: [255, 204, 153, 255],
-                shirt: [255, 0, 0, 255],
-                pants: [0, 0, 255, 255],
-                shoes: [0, 0, 0, 255],
-                hair: [0, 0, 0, 255]
-            };
-            // Функция для установки пикселя
-            function setPixel(pixels, x, y, color) {
-                const idx = (Math.floor(y) * TILE_SIZE + Math.floor(x)) * 4;
-                if (idx >= 0 && idx < pixels.length) {
-                    pixels[idx] = color[0];
-                    pixels[idx+1] = color[1];
-                    pixels[idx+2] = color[2];
-                    pixels[idx+3] = color[3];
-                }
-            }
-            // Создание спрайта игрока
-            function createPlayerSprite(isRightFacing = true) {
-                const pixels = new Uint8ClampedArray(TILE_SIZE * TILE_SIZE * 4).fill(0);
-                const flipX = (x) => isRightFacing ? x : TILE_SIZE - 1 - x;
-                // Голова
-                for (let dx = -8; dx <= 8; dx++) {
-                    for (let dy = -4; dy <= 6; dy++) {
-                        if (Math.abs(dx/8) + Math.abs(dy/6) < 1) {
-                            setPixel(pixels, flipX(16 + dx), 4 + dy, COLORS.skin);
-                        }
-                    }
-                }
-                // Волосы
-                for (let dx = -6; dx <= 6; dx++) {
-                    for (let dy = -2; dy <= 2; dy++) {
-                        if (Math.abs(dx/6) + Math.abs(dy/2) < 1) {
-                            setPixel(pixels, flipX(16 + dx), 2 + dy, COLORS.hair);
-                        }
-                    }
-                }
-                // Тело
-                for (let dx = -7; dx <= 7; dx++) {
-                    let height = 13 - Math.abs(dx);
-                    for (let dy = 0; dy < height; dy++) {
-                        setPixel(pixels, flipX(16 + dx), 10 + dy, COLORS.shirt);
-                    }
-                }
-                // Руки
-                for (let dy = 0; dy < 9; dy++) {
-                    setPixel(pixels, flipX(9), 11 + dy, COLORS.skin);
-                    setPixel(pixels, flipX(10), 11 + dy, COLORS.skin);
-                    setPixel(pixels, flipX(22), 11 + dy, COLORS.skin);
-                    setPixel(pixels, flipX(23), 11 + dy, COLORS.skin);
-                }
-                // Ноги
-                for (let dy = 0; dy < 12; dy++) {
-                    setPixel(pixels, flipX(14), 22 + dy, COLORS.pants);
-                    setPixel(pixels, flipX(15), 22 + dy, COLORS.pants);
-                    setPixel(pixels, flipX(18), 22 + dy, COLORS.pants);
-                    setPixel(pixels, flipX(19), 22 + dy, COLORS.pants);
-                }
-                for (let dy = 8; dy < 12; dy++) {
-                    setPixel(pixels, flipX(15), 26 + dy, COLORS.shoes);
-                    setPixel(pixels, flipX(16), 26 + dy, COLORS.shoes);
-                    setPixel(pixels, flipX(19), 26 + dy, COLORS.shoes);
-                    setPixel(pixels, flipX(20), 26 + dy, COLORS.shoes);
-                }
-                return new ImageData(pixels, TILE_SIZE, TILE_SIZE);
-            }
-            // Создание оффскрин канвасов для спрайтов игрока
-            function createOffscreenSprite(isRightFacing) {
-                const offCanvas = document.createElement('canvas');
-                offCanvas.width = TILE_SIZE;
-                offCanvas.height = TILE_SIZE;
-                const offCtx = offCanvas.getContext('2d');
-                offCtx.putImageData(createPlayerSprite(isRightFacing), 0, 0);
-                return offCanvas;
-            }
-            const playerSpriteRight = createOffscreenSprite(true);
-            const playerSpriteLeft = createOffscreenSprite(false);
+
+            // Переменные для анимации
+            let animationFrame = 0;
+            const ANIMATION_SPEED = 8;
+            let frameCounter = 0;
+
             // Генерация типа тайла
             function getTileType(x, y) {
                 const noise = Math.sin(x * 0.05) * Math.cos(y * 0.05);
@@ -206,20 +178,21 @@
                 if (noise < -0.3) return 'sand';
                 return 'dirt';
             }
+
             const TILE_COLORS = {
                 grass: '#4A7C59',
                 sand: '#C2B280',
                 dirt: '#8B7355'
             };
-            // Отрисовка фона (карты)
+
+            // Отрисовка фона
             function drawBackground() {
-                // Градиент неба
                 const grad = ctx.createLinearGradient(0, 0, 0, WORLD_PIXEL_HEIGHT * 0.3);
                 grad.addColorStop(0, '#87CEEB');
                 grad.addColorStop(1, '#B0E0E6');
                 ctx.fillStyle = grad;
                 ctx.fillRect(0, 0, WORLD_PIXEL_WIDTH, WORLD_PIXEL_HEIGHT * 0.3);
-                // Тайлы
+
                 for (let y = 0; y < WORLD_HEIGHT; y++) {
                     for (let x = 0; x < WORLD_WIDTH; x++) {
                         const type = getTileType(x, y);
@@ -228,26 +201,121 @@
                     }
                 }
             }
-            // Отрисовка игрока
+
+            // Отрисовка игрока с разными размерами для разных состояний
             function drawPlayer() {
-                const sprite = player.facing === 1 ? playerSpriteRight : playerSpriteLeft;
-                ctx.drawImage(sprite, player.x, player.y);
+                let currentImage;
+                let currentWidth, currentHeight;
+
+                if (player.isMoving) {
+                    // Бег - используем размеры для бега
+                    currentWidth = RUN_WIDTH;
+                    currentHeight = RUN_HEIGHT;
+
+                    frameCounter++;
+                    if (frameCounter >= ANIMATION_SPEED) {
+                        frameCounter = 0;
+                        animationFrame = (animationFrame + 1) % 3;
+                    }
+                    currentImage = playerImages.run[animationFrame];
+                } else {
+                    // Стоя - используем размеры для стояния
+                    currentWidth = IDLE_WIDTH;
+                    currentHeight = IDLE_HEIGHT;
+                    currentImage = playerImages.idle;
+                }
+
+                // Обновляем размеры игрока (для коллизий)
+                player.width = currentWidth;
+                player.height = currentHeight;
+
+                if (currentImage && currentImage.complete && currentImage.naturalHeight !== 0) {
+                    ctx.save();
+
+                    if (player.facing === -1) {
+                        // При движении влево отражаем
+                        ctx.translate(player.x + currentWidth, player.y);
+                        ctx.scale(-1, 1);
+                        ctx.drawImage(currentImage, 0, 0, currentWidth, currentHeight);
+                    } else {
+                        ctx.drawImage(currentImage, player.x, player.y, currentWidth, currentHeight);
+                    }
+
+                    ctx.restore();
+
+                    // Опционально: отладочные рамки
+                    // ctx.strokeStyle = player.isMoving ? '#ff0000' : '#00ff00';
+                    // ctx.lineWidth = 1;
+                    // ctx.strokeRect(player.x, player.y, currentWidth, currentHeight);
+
+                } else {
+                    // Отладочный квадрат
+                    ctx.fillStyle = '#ff0000';
+                    ctx.fillRect(player.x, player.y, currentWidth, currentHeight);
+
+                    ctx.fillStyle = '#ffffff';
+                    ctx.font = '10px Arial';
+                    ctx.fillText(
+                        player.isMoving ? `RUN:${currentWidth}x${currentHeight}` : `IDLE:${currentWidth}x${currentHeight}`,
+                        player.x,
+                        player.y - 5
+                    );
+                }
             }
+
             // Обновление физики
             function update() {
+                const prevVx = player.vx;
+                const prevVy = player.vy;
+
+                // Сохраняем текущие размеры для проверки границ
+                const currentWidth = player.isMoving ? RUN_WIDTH : IDLE_WIDTH;
+                const currentHeight = player.isMoving ? RUN_HEIGHT : IDLE_HEIGHT;
+
                 player.x += player.vx;
                 player.y += player.vy;
-                // Границы карты
-                player.x = Math.max(0, Math.min(WORLD_PIXEL_WIDTH - player.size, player.x));
-                player.y = Math.max(0, Math.min(WORLD_PIXEL_HEIGHT - player.size, player.y));
-                // Трение
+
+                // Границы с учетом текущих размеров
+                player.x = Math.max(0, Math.min(WORLD_PIXEL_WIDTH - currentWidth, player.x));
+                player.y = Math.max(0, Math.min(WORLD_PIXEL_HEIGHT - currentHeight, player.y));
+
                 player.vx *= 0.8;
                 player.vy *= 0.8;
                 if (Math.abs(player.vx) < 0.1) player.vx = 0;
                 if (Math.abs(player.vy) < 0.1) player.vy = 0;
+
+                // Проверка движения
+                const wasMoving = player.isMoving;
+                player.isMoving = (Math.abs(player.vx) > 0.1 || Math.abs(player.vy) > 0.1);
+
+                // Направление
                 if (player.vx !== 0) player.facing = player.vx > 0 ? 1 : -1;
+
+                // При смене состояния (остановка) корректируем позицию
+                if (wasMoving && !player.isMoving) {
+                    // Переход из бега в стойку - центрируем по X для нового размера
+                    const centerX = player.x + RUN_WIDTH / 2;
+                    player.x = centerX - IDLE_WIDTH / 2;
+
+                    // Корректируем границы
+                    player.x = Math.max(0, Math.min(WORLD_PIXEL_WIDTH - IDLE_WIDTH, player.x));
+
+                    animationFrame = 0;
+                    frameCounter = 0;
+                }
+
+                // При старте бега корректируем позицию
+                if (!wasMoving && player.isMoving) {
+                    // Переход из стойки в бег - центрируем по X для нового размера
+                    const centerX = player.x + IDLE_WIDTH / 2;
+                    player.x = centerX - RUN_WIDTH / 2;
+
+                    // Корректируем границы
+                    player.x = Math.max(0, Math.min(WORLD_PIXEL_WIDTH - RUN_WIDTH, player.x));
+                }
             }
-            // Управление с клавиатуры (для ПК)
+
+            // Управление с клавиатуры
             const keys = {};
             document.addEventListener('keydown', (e) => {
                 const key = e.key.toLowerCase();
@@ -256,12 +324,11 @@
                     const arrow = e.key.toLowerCase().replace('arrow','');
                     keys[arrow] = true;
                 }
-                // Блокируем скролл страницы на стрелках
                 if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'w', 'a', 's', 'd'].includes(key)) {
                     e.preventDefault();
                 }
             });
-           
+
             document.addEventListener('keyup', (e) => {
                 const key = e.key.toLowerCase();
                 keys[key] = false;
@@ -270,6 +337,7 @@
                     keys[arrow] = false;
                 }
             });
+
             function handleKeyboard() {
                 let dx = 0, dy = 0;
                 if (keys['a'] || keys['left']) dx -= 1;
@@ -283,10 +351,11 @@
                     player.vy = (dy / len) * targetSpeed;
                 }
             }
+
             // Джойстик
             let joystick = null;
             const joystickZone = document.getElementById('joystickZone');
-           
+
             function initJoystick() {
                 if (joystick) joystick.destroy();
                 if (typeof nipplejs !== 'undefined') {
@@ -300,7 +369,7 @@
                         lockY: false,
                         lockX: false
                     });
-                   
+
                     joystick.on('move', (evt, data) => {
                         if (data.vector) {
                             const targetSpeed = player.speed * 5;
@@ -308,31 +377,27 @@
                             player.vy = -data.vector.y * targetSpeed;
                         }
                     });
-                   
+
                     joystick.on('end', () => {
                         player.vx = 0;
                         player.vy = 0;
                     });
                 }
             }
-            // Ресайз canvas под текущий экран (всегда горизонтальный)
+
             function resizeCanvas() {
                 canvasWidth = window.innerWidth;
                 canvasHeight = window.innerHeight;
-               
+
                 canvas.width = canvasWidth;
                 canvas.height = canvasHeight;
             }
-            // Проверка ориентации
+
             function checkOrientation() {
-                // На мобильных устройствах проверяем портретную ориентацию
                 if (window.innerWidth < window.innerHeight && window.matchMedia("(max-width: 768px)").matches) {
-                    // Портрет - ничего не делаем, CSS покажет сообщение
                     return false;
                 } else {
-                    // Альбом - включаем отображение
                     document.body.style.display = 'flex';
-                    // Попытка заблокировать ориентацию в landscape (работает только в fullscreen)
                     if (screen.orientation && screen.orientation.lock) {
                         document.documentElement.requestFullscreen().then(() => {
                             screen.orientation.lock('landscape').catch(() => {});
@@ -341,57 +406,48 @@
                     return true;
                 }
             }
-            // Инициализация
+
             function init() {
                 resizeCanvas();
-                if (!checkOrientation()) return; // Если портрет, не инициализируем
+                if (!checkOrientation()) return;
                 initJoystick();
-               
-                // Слушаем изменения размера (поворот)
+
                 window.addEventListener('resize', () => {
                     resizeCanvas();
                     checkOrientation();
                 });
-               
-                // Запуск игрового цикла
+
                 gameLoop();
-               
-                // Периодический опрос клавиатуры
                 setInterval(handleKeyboard, 16);
-               
-                // Удаляем старый UI
-                const oldUi = document.getElementById('ui');
-                if (oldUi) oldUi.remove();
             }
-            // Игровой цикл
+
             function gameLoop() {
                 ctx.clearRect(0, 0, canvasWidth, canvasHeight);
-               
+
                 const scale = Math.min(canvasWidth / WORLD_PIXEL_WIDTH, canvasHeight / WORLD_PIXEL_HEIGHT);
                 const offsetX = (canvasWidth - WORLD_PIXEL_WIDTH * scale) / 2;
                 const offsetY = (canvasHeight - WORLD_PIXEL_HEIGHT * scale) / 2;
-               
+
                 ctx.save();
                 ctx.translate(offsetX, offsetY);
                 ctx.scale(scale, scale);
-               
+
                 drawBackground();
                 update();
                 drawPlayer();
-               
+
                 ctx.restore();
                 requestAnimationFrame(gameLoop);
             }
-            // Стартуем после загрузки
+
             window.addEventListener('load', init);
-           
-            // Для Telegram запускаем сразу
+
             if (document.readyState === 'complete') {
                 init();
             } else {
                 window.addEventListener('load', init);
             }
-           
+
         })();
     </script>
 </body>
