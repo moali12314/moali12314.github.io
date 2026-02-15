@@ -14,7 +14,7 @@
             user-select: none;
             -webkit-tap-highlight-color: transparent;
         }
-        
+       
         html, body {
             width: 100%;
             height: 100%;
@@ -22,14 +22,14 @@
             position: fixed;
             background: #000;
         }
-        
+       
         body {
             display: flex;
             justify-content: center;
             align-items: center;
             touch-action: pan-y pinch-zoom;
         }
-        
+       
         /* Блокировка вертикальной ориентации на телефонах */
         @media (max-width: 768px) and (orientation: portrait) {
             body::before {
@@ -55,16 +55,16 @@
                 display: none !important;
             }
         }
-        
+       
         canvas {
             display: block;
             width: 100%;
             height: 100%;
-            object-fit: fill;  /* Растягиваем четко по размерам */
+            object-fit: fill; /* Растягиваем четко по размерам */
             image-rendering: crisp-edges;
             image-rendering: pixelated;
         }
-        
+       
         /* Джойстик всегда виден в горизонтальной ориентации */
         #joystickZone {
             position: fixed;
@@ -81,7 +81,7 @@
             touch-action: none;
             pointer-events: auto;
         }
-        
+       
         /* Скрываем любой старый UI */
         #ui {
             display: none !important;
@@ -91,7 +91,6 @@
 <body>
     <canvas id="gameCanvas"></canvas>
     <div id="joystickZone"></div>
-
     <script>
         (function() {
             // Telegram Web App
@@ -100,29 +99,28 @@
                 Telegram.WebApp.expand();
                 Telegram.WebApp.setHeaderColor?.('#000000');
             }
-
             const canvas = document.getElementById('gameCanvas');
             const ctx = canvas.getContext('2d');
             ctx.imageSmoothingEnabled = false;
-
             // Фиксированный размер тайла
             const TILE_SIZE = 32;
-            
+           
             // Переменные для размеров canvas
             let canvasWidth, canvasHeight;
-            let WORLD_WIDTH, WORLD_HEIGHT;
-
+            let WORLD_WIDTH = 200; // Широкий горизонтальный мир (в тайлах)
+            let WORLD_HEIGHT;
+            // Камера
+            let camera = { x: 0, y: 0 };
             // Игрок
             let player = {
                 x: 0,
                 y: 0,
                 vx: 0,
                 vy: 0,
-                speed: 1.5,        // базовая скорость
+                speed: 1.5, // базовая скорость
                 facing: 1,
                 size: TILE_SIZE
             };
-
             // Цвета персонажа
             const COLORS = {
                 skin: [255, 204, 153, 255],
@@ -131,7 +129,6 @@
                 shoes: [0, 0, 0, 255],
                 hair: [0, 0, 0, 255]
             };
-
             // Функция для установки пикселя
             function setPixel(pixels, x, y, color) {
                 const idx = (Math.floor(y) * TILE_SIZE + Math.floor(x)) * 4;
@@ -142,12 +139,10 @@
                     pixels[idx+3] = color[3];
                 }
             }
-
             // Создание спрайта игрока
             function createPlayerSprite(isRightFacing = true) {
                 const pixels = new Uint8ClampedArray(TILE_SIZE * TILE_SIZE * 4).fill(0);
                 const flipX = (x) => isRightFacing ? x : TILE_SIZE - 1 - x;
-
                 // Голова
                 for (let dx = -8; dx <= 8; dx++) {
                     for (let dy = -4; dy <= 6; dy++) {
@@ -193,7 +188,6 @@
                 }
                 return new ImageData(pixels, TILE_SIZE, TILE_SIZE);
             }
-
             // Генерация типа тайла
             function getTileType(x, y) {
                 const noise = Math.sin(x * 0.1) * Math.cos(y * 0.1);
@@ -201,57 +195,54 @@
                 if (noise < -0.3) return 'sand';
                 return 'dirt';
             }
-
             const TILE_COLORS = {
                 grass: ['#4A7C59', '#5A8C69', '#3A6C49'],
-                sand:  ['#C2B280', '#D2C290', '#B2A270'],
-                dirt:  ['#8B7355', '#9B8555', '#7B6545']
+                sand: ['#C2B280', '#D2C290', '#B2A270'],
+                dirt: ['#8B7355', '#9B8555', '#7B6545']
             };
-
             // Отрисовка фона (карты)
             function drawBackground() {
-                // Градиент неба
+                // Градиент неба (фиксированный, не скроллится)
                 const grad = ctx.createLinearGradient(0, 0, 0, canvasHeight * 0.3);
                 grad.addColorStop(0, '#87CEEB');
                 grad.addColorStop(1, '#B0E0E6');
                 ctx.fillStyle = grad;
                 ctx.fillRect(0, 0, canvasWidth, canvasHeight * 0.3);
-
-                // Тайлы - горизонтальная карта (широкая)
+                // Тайлы - горизонтальная карта с камерой (скролл только по X)
+                const startX = Math.floor(camera.x / TILE_SIZE);
+                const endX = startX + Math.ceil(canvasWidth / TILE_SIZE) + 1;
                 for (let y = 0; y < WORLD_HEIGHT; y++) {
-                    for (let x = 0; x < WORLD_WIDTH; x++) {
+                    for (let x = startX; x < endX; x++) {
+                        if (x < 0 || x >= WORLD_WIDTH) continue;
                         const type = getTileType(x, y);
                         const colors = TILE_COLORS[type];
                         ctx.fillStyle = colors[(x + y) % 3];
-                        ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+                        ctx.fillRect((x * TILE_SIZE) - camera.x, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
                     }
                 }
             }
-
             // Отрисовка игрока
             function drawPlayer() {
                 const sprite = createPlayerSprite(player.facing === 1);
-                ctx.putImageData(sprite, player.x, player.y);
+                ctx.putImageData(sprite, player.x - camera.x, player.y);
             }
-
             // Обновление физики
             function update() {
                 player.x += player.vx;
                 player.y += player.vy;
-
-                // Границы карты
-                player.x = Math.max(0, Math.min(canvasWidth - player.size, player.x));
+                // Границы карты (горизонтальный скролл, вертикальный фиксирован)
+                player.x = Math.max(0, Math.min((WORLD_WIDTH * TILE_SIZE) - player.size, player.x));
                 player.y = Math.max(0, Math.min(canvasHeight - player.size, player.y));
-
+                // Обновление камеры (только по X, следует за игроком)
+                camera.x = player.x - (canvasWidth / 2) + (player.size / 2);
+                camera.x = Math.max(0, Math.min((WORLD_WIDTH * TILE_SIZE) - canvasWidth, camera.x));
                 // Трение
                 player.vx *= 0.8;
                 player.vy *= 0.8;
                 if (Math.abs(player.vx) < 0.1) player.vx = 0;
                 if (Math.abs(player.vy) < 0.1) player.vy = 0;
-
                 if (player.vx !== 0) player.facing = player.vx > 0 ? 1 : -1;
             }
-
             // Управление с клавиатуры (для ПК)
             const keys = {};
             document.addEventListener('keydown', (e) => {
@@ -266,7 +257,7 @@
                     e.preventDefault();
                 }
             });
-            
+           
             document.addEventListener('keyup', (e) => {
                 const key = e.key.toLowerCase();
                 keys[key] = false;
@@ -275,14 +266,12 @@
                     keys[arrow] = false;
                 }
             });
-
             function handleKeyboard() {
                 let dx = 0, dy = 0;
                 if (keys['a'] || keys['left']) dx -= 1;
                 if (keys['d'] || keys['right']) dx += 1;
                 if (keys['w'] || keys['up']) dy -= 1;
                 if (keys['s'] || keys['down']) dy += 1;
-
                 if (dx !== 0 || dy !== 0) {
                     const len = Math.sqrt(dx*dx + dy*dy);
                     const targetSpeed = player.speed * 5;
@@ -290,11 +279,10 @@
                     player.vy = (dy / len) * targetSpeed;
                 }
             }
-
             // Джойстик
             let joystick = null;
             const joystickZone = document.getElementById('joystickZone');
-            
+           
             function initJoystick() {
                 if (joystick) joystick.destroy();
                 if (typeof nipplejs !== 'undefined') {
@@ -308,7 +296,7 @@
                         lockY: false,
                         lockX: false
                     });
-                    
+                   
                     joystick.on('move', (evt, data) => {
                         if (data.vector) {
                             const targetSpeed = player.speed * 5;
@@ -316,31 +304,26 @@
                             player.vy = -data.vector.y * targetSpeed;
                         }
                     });
-                    
+                   
                     joystick.on('end', () => {
                         player.vx = 0;
                         player.vy = 0;
                     });
                 }
             }
-
             // Ресайз canvas под текущий экран (всегда горизонтальный)
             function resizeCanvas() {
                 canvasWidth = window.innerWidth;
                 canvasHeight = window.innerHeight;
-                
+               
                 canvas.width = canvasWidth;
                 canvas.height = canvasHeight;
-
-                // Карта всегда покрывает весь экран
-                WORLD_WIDTH = Math.ceil(canvasWidth / TILE_SIZE) + 2;  // +2 для запаса
-                WORLD_HEIGHT = Math.ceil(canvasHeight / TILE_SIZE) + 2;
-
-                // Центрируем игрока
+                // Высота мира фиксирована по экрану, ширина большая
+                WORLD_HEIGHT = Math.ceil(canvasHeight / TILE_SIZE);
+                // Центрируем игрока по Y, старт по X
                 player.x = Math.floor((canvasWidth - player.size) / 2);
                 player.y = Math.floor((canvasHeight - player.size) / 2);
             }
-
             // Проверка ориентации
             function checkOrientation() {
                 // На мобильных устройствах проверяем портретную ориентацию
@@ -350,32 +333,37 @@
                 } else {
                     // Альбом - включаем отображение
                     document.body.style.display = 'flex';
+                    // Попытка заблокировать ориентацию в landscape (работает только в fullscreen)
+                    if (screen.orientation && screen.orientation.lock) {
+                        document.documentElement.requestFullscreen().then(() => {
+                            screen.orientation.lock('landscape').catch(() => {});
+                        }).catch(() => {});
+                    }
                     return true;
                 }
             }
-
             // Инициализация
             function init() {
                 resizeCanvas();
+                if (!checkOrientation()) return; // Если портрет, не инициализируем
                 initJoystick();
-                
+               
                 // Слушаем изменения размера (поворот)
                 window.addEventListener('resize', () => {
                     resizeCanvas();
                     checkOrientation();
                 });
-                
+               
                 // Запуск игрового цикла
                 gameLoop();
-                
+               
                 // Периодический опрос клавиатуры
                 setInterval(handleKeyboard, 16);
-                
+               
                 // Удаляем старый UI
                 const oldUi = document.getElementById('ui');
                 if (oldUi) oldUi.remove();
             }
-
             // Игровой цикл
             function gameLoop() {
                 drawBackground();
@@ -383,17 +371,16 @@
                 drawPlayer();
                 requestAnimationFrame(gameLoop);
             }
-
             // Стартуем после загрузки
             window.addEventListener('load', init);
-            
+           
             // Для Telegram запускаем сразу
             if (document.readyState === 'complete') {
                 init();
             } else {
                 window.addEventListener('load', init);
             }
-            
+           
         })();
     </script>
 </body>
