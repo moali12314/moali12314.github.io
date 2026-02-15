@@ -63,9 +63,9 @@
             height: 160px;
             z-index: 100;
             border-radius: 50%;
-            background: rgba(40,40,60,0.65);
-            border: 3px solid rgba(220,180,0,0.7);
-            box-shadow: 0 0 25px rgba(220,180,0,0.4);
+            background: transparent;          /* полностью прозрачный фон */
+            border: none;                     /* убрана рамка */
+            box-shadow: none;                 /* убрана тень */
             touch-action: none;
         }
     </style>
@@ -92,16 +92,13 @@
             // РАЗМЕРЫ (адаптированы под мобильные)
             // ────────────────────────────────────────────────
             const TILE_SIZE = window.innerWidth < 768 ? 48 : 64;
-
-            const IDLE_WIDTH  = 40;
+            const IDLE_WIDTH = 40;
             const IDLE_HEIGHT = 56;
-            const RUN_WIDTH   = 48;
-            const RUN_HEIGHT  = 56;
-
-            const WORLD_WIDTH  = window.innerWidth < 768 ? 18 : 24;
+            const RUN_WIDTH = 48;
+            const RUN_HEIGHT = 56;
+            const WORLD_WIDTH = window.innerWidth < 768 ? 18 : 24;
             const WORLD_HEIGHT = window.innerWidth < 768 ? 11 : 14;
-
-            const WORLD_PIXEL_WIDTH  = WORLD_WIDTH  * TILE_SIZE;
+            const WORLD_PIXEL_WIDTH = WORLD_WIDTH * TILE_SIZE;
             const WORLD_PIXEL_HEIGHT = WORLD_HEIGHT * TILE_SIZE;
 
             let canvasWidth, canvasHeight;
@@ -162,13 +159,12 @@
 
             const COLORS = {
                 grass: '#3a6c4a',
-                dirt:  '#7a6348',
+                dirt: '#7a6348',
                 water: '#3a78c2',
-                path:  '#b89a70'
+                path: '#b89a70'
             };
 
             function drawBackground() {
-                // простой градиент неба
                 const g = ctx.createLinearGradient(0,0,0,WORLD_PIXEL_HEIGHT);
                 g.addColorStop(0, '#0f172a');
                 g.addColorStop(1, '#1e293b');
@@ -186,7 +182,6 @@
 
             function drawPlayer() {
                 let img, w, h;
-
                 if (player.isMoving) {
                     w = RUN_WIDTH;
                     h = RUN_HEIGHT;
@@ -201,12 +196,9 @@
                     h = IDLE_HEIGHT;
                     img = playerImages.idle;
                 }
-
                 player.width = w;
                 player.height = h;
-
                 ctx.save();
-
                 if (img.complete && img.naturalHeight !== 0) {
                     if (player.facing === -1) {
                         ctx.translate(player.x + w, player.y);
@@ -219,32 +211,23 @@
                     ctx.fillStyle = '#e53e3e';
                     ctx.fillRect(player.x, player.y, w, h);
                 }
-
                 ctx.restore();
             }
 
             function update() {
                 const cw = player.isMoving ? RUN_WIDTH : IDLE_WIDTH;
                 const ch = player.isMoving ? RUN_HEIGHT : IDLE_HEIGHT;
-
                 player.x += player.vx;
                 player.y += player.vy;
-
                 player.x = Math.max(0, Math.min(WORLD_PIXEL_WIDTH - cw, player.x));
                 player.y = Math.max(0, Math.min(WORLD_PIXEL_HEIGHT - ch, player.y));
-
                 player.vx *= 0.84;
                 player.vy *= 0.84;
-
                 if (Math.abs(player.vx) < 0.08) player.vx = 0;
                 if (Math.abs(player.vy) < 0.08) player.vy = 0;
-
                 const wasMoving = player.isMoving;
                 player.isMoving = Math.abs(player.vx) > 0.08 || Math.abs(player.vy) > 0.08;
-
                 if (player.vx !== 0) player.facing = player.vx > 0 ? 1 : -1;
-
-                // центрируем при смене состояния
                 if (wasMoving && !player.isMoving) {
                     player.x += (RUN_WIDTH - IDLE_WIDTH) / 2;
                 }
@@ -253,9 +236,7 @@
                 }
             }
 
-            // ────────────────────────────────────────────────
             // Клавиатура (для ПК)
-            // ────────────────────────────────────────────────
             const keys = {};
             window.addEventListener('keydown', e => {
                 keys[e.key.toLowerCase()] = true;
@@ -270,7 +251,6 @@
                 if (keys['d'] || keys['arrowright']) dx++;
                 if (keys['w'] || keys['arrowup']) dy--;
                 if (keys['s'] || keys['arrowdown']) dy++;
-
                 if (dx || dy) {
                     const len = Math.hypot(dx, dy);
                     const spd = player.speed * 4.5;
@@ -279,9 +259,7 @@
                 }
             }
 
-            // ────────────────────────────────────────────────
-            // Джойстик
-            // ────────────────────────────────────────────────
+            // Джойстик (без видимого круга)
             let joystick = null;
             const zone = document.getElementById('joystickZone');
 
@@ -291,7 +269,7 @@
                     zone: zone,
                     mode: 'static',
                     position: { left: '50%', top: '50%' },
-                    color: '#eee',
+                    color: 'transparent',          // цвет стика тоже прозрачный
                     size: 140,
                     threshold: 0.08
                 });
@@ -334,28 +312,22 @@
 
             function gameLoop() {
                 ctx.clearRect(0, 0, canvasWidth, canvasHeight);
-
                 const scale = Math.max(
                     Math.min(
-                        canvasWidth  / WORLD_PIXEL_WIDTH,
+                        canvasWidth / WORLD_PIXEL_WIDTH,
                         canvasHeight / WORLD_PIXEL_HEIGHT
                     ),
                     1.0
                 ) * 0.98;
-
-                const ox = (canvasWidth  - WORLD_PIXEL_WIDTH  * scale) / 2;
+                const ox = (canvasWidth - WORLD_PIXEL_WIDTH * scale) / 2;
                 const oy = (canvasHeight - WORLD_PIXEL_HEIGHT * scale) / 2;
-
                 ctx.save();
                 ctx.translate(ox, oy);
                 ctx.scale(scale, scale);
-
                 drawBackground();
                 update();
                 drawPlayer();
-
                 ctx.restore();
-
                 requestAnimationFrame(gameLoop);
             }
 
