@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Soul Knight Clone - Fullscreen Map</title>
+    <title>Soul Knight - Horizontal Fullscreen</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/nipplejs@0.9.0/dist/nipplejs.min.js"></script>
     <style>
@@ -14,43 +14,77 @@
             user-select: none;
             -webkit-tap-highlight-color: transparent;
         }
-        body {
+        
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            position: fixed;
             background: #000;
+        }
+        
+        body {
             display: flex;
             justify-content: center;
             align-items: center;
-            min-height: 100vh;
-            min-height: 100dvh; /* для современных мобильных браузеров */
-            overflow: hidden;
-            touch-action: pan-y pinch-zoom; /* разрешаем только вертикальные жесты, чтобы не ломать джойстик */
-            font-family: Arial, sans-serif;
+            touch-action: pan-y pinch-zoom;
         }
+        
+        /* Блокировка вертикальной ориентации на телефонах */
+        @media (max-width: 768px) and (orientation: portrait) {
+            body::before {
+                content: "ПОВЕРНИТЕ ЭКРАН";
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: #000;
+                color: white;
+                font-size: 24px;
+                font-weight: bold;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                text-align: center;
+                z-index: 9999;
+                font-family: Arial, sans-serif;
+                letter-spacing: 2px;
+            }
+            canvas, #joystickZone {
+                display: none !important;
+            }
+        }
+        
         canvas {
             display: block;
             width: 100%;
             height: 100%;
-            object-fit: cover; /* растягиваем canvas четко по размерам экрана */
+            object-fit: fill;  /* Растягиваем четко по размерам */
             image-rendering: crisp-edges;
             image-rendering: pixelated;
         }
-        /* Джойстик всегда доступен и фиксирован */
+        
+        /* Джойстик всегда виден в горизонтальной ориентации */
         #joystickZone {
             position: fixed;
-            bottom: 20px;
-            left: 20px;
+            bottom: 30px;
+            left: 30px;
             width: 130px;
             height: 130px;
             z-index: 100;
             border-radius: 50%;
-            background: rgba(255,255,255,0.15);
+            background: rgba(255,255,255,0.2);
             backdrop-filter: blur(4px);
-            border: 2px solid rgba(255,255,255,0.25);
-            display: block; /* всегда показываем, так как это мобильная версия */
+            border: 2px solid rgba(255,255,255,0.3);
+            display: block;
             touch-action: none;
+            pointer-events: auto;
         }
-        /* Скрываем старый ui полностью */
+        
+        /* Скрываем любой старый UI */
         #ui {
-            display: none;
+            display: none !important;
         }
     </style>
 </head>
@@ -64,43 +98,41 @@
             if (window.Telegram?.WebApp) {
                 Telegram.WebApp.ready();
                 Telegram.WebApp.expand();
-                // дополнительно просим растянуться на весь экран
-                Telegram.WebApp.setHeaderColor?.( '#000000' );
+                Telegram.WebApp.setHeaderColor?.('#000000');
             }
 
             const canvas = document.getElementById('gameCanvas');
             const ctx = canvas.getContext('2d');
             ctx.imageSmoothingEnabled = false;
 
-            // Размер тайла фиксирован, но карта всегда подстраивается под экран
+            // Фиксированный размер тайла
             const TILE_SIZE = 32;
-
-            // Эти переменные будут пересчитываться при каждом resize, но canvas всегда = экран
+            
+            // Переменные для размеров canvas
             let canvasWidth, canvasHeight;
             let WORLD_WIDTH, WORLD_HEIGHT;
 
-            // Игрок (спрайт 32x32)
+            // Игрок
             let player = {
                 x: 0,
                 y: 0,
                 vx: 0,
                 vy: 0,
-                speed: 1.5,        // базовая скорость (пикс/кадр), через множитель 5 = 7.5
+                speed: 1.5,        // базовая скорость
                 facing: 1,
                 size: TILE_SIZE
             };
 
-            // Палитра персонажа
+            // Цвета персонажа
             const COLORS = {
                 skin: [255, 204, 153, 255],
                 shirt: [255, 0, 0, 255],
                 pants: [0, 0, 255, 255],
                 shoes: [0, 0, 0, 255],
-                hair: [0, 0, 0, 255],
-                transparent: [0, 0, 0, 0]
+                hair: [0, 0, 0, 255]
             };
 
-            // ----- Генерация спрайта (статичный, без анимации) -----
+            // Функция для установки пикселя
             function setPixel(pixels, x, y, color) {
                 const idx = (Math.floor(y) * TILE_SIZE + Math.floor(x)) * 4;
                 if (idx >= 0 && idx < pixels.length) {
@@ -111,6 +143,7 @@
                 }
             }
 
+            // Создание спрайта игрока
             function createPlayerSprite(isRightFacing = true) {
                 const pixels = new Uint8ClampedArray(TILE_SIZE * TILE_SIZE * 4).fill(0);
                 const flipX = (x) => isRightFacing ? x : TILE_SIZE - 1 - x;
@@ -138,7 +171,7 @@
                         setPixel(pixels, flipX(16 + dx), 10 + dy, COLORS.shirt);
                     }
                 }
-                // Руки (утолщенные)
+                // Руки
                 for (let dy = 0; dy < 9; dy++) {
                     setPixel(pixels, flipX(9), 11 + dy, COLORS.skin);
                     setPixel(pixels, flipX(10), 11 + dy, COLORS.skin);
@@ -161,7 +194,7 @@
                 return new ImageData(pixels, TILE_SIZE, TILE_SIZE);
             }
 
-            // ----- Карта (только декор) -----
+            // Генерация типа тайла
             function getTileType(x, y) {
                 const noise = Math.sin(x * 0.1) * Math.cos(y * 0.1);
                 if (noise > 0.3) return 'grass';
@@ -175,15 +208,16 @@
                 dirt:  ['#8B7355', '#9B8555', '#7B6545']
             };
 
+            // Отрисовка фона (карты)
             function drawBackground() {
-                // Небо градиент (верхние 30% экрана)
+                // Градиент неба
                 const grad = ctx.createLinearGradient(0, 0, 0, canvasHeight * 0.3);
                 grad.addColorStop(0, '#87CEEB');
                 grad.addColorStop(1, '#B0E0E6');
                 ctx.fillStyle = grad;
                 ctx.fillRect(0, 0, canvasWidth, canvasHeight * 0.3);
 
-                // Тайлы отрисовываются по целочисленным индексам
+                // Тайлы - горизонтальная карта (широкая)
                 for (let y = 0; y < WORLD_HEIGHT; y++) {
                     for (let x = 0; x < WORLD_WIDTH; x++) {
                         const type = getTileType(x, y);
@@ -194,13 +228,13 @@
                 }
             }
 
-            // ----- Отрисовка игрока -----
+            // Отрисовка игрока
             function drawPlayer() {
                 const sprite = createPlayerSprite(player.facing === 1);
                 ctx.putImageData(sprite, player.x, player.y);
             }
 
-            // ----- Физика (инерция) -----
+            // Обновление физики
             function update() {
                 player.x += player.vx;
                 player.y += player.vy;
@@ -218,17 +252,21 @@
                 if (player.vx !== 0) player.facing = player.vx > 0 ? 1 : -1;
             }
 
-            // ----- Управление с клавиатуры (для отладки на ПК) -----
+            // Управление с клавиатуры (для ПК)
             const keys = {};
             document.addEventListener('keydown', (e) => {
                 const key = e.key.toLowerCase();
                 keys[key] = true;
-                // стрелки
                 if (e.key.startsWith('Arrow')) {
                     const arrow = e.key.toLowerCase().replace('arrow','');
-                    keys[arrow] = true; // для единообразия
+                    keys[arrow] = true;
+                }
+                // Блокируем скролл страницы на стрелках
+                if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'w', 'a', 's', 'd'].includes(key)) {
+                    e.preventDefault();
                 }
             });
+            
             document.addEventListener('keyup', (e) => {
                 const key = e.key.toLowerCase();
                 keys[key] = false;
@@ -247,74 +285,98 @@
 
                 if (dx !== 0 || dy !== 0) {
                     const len = Math.sqrt(dx*dx + dy*dy);
-                    const targetSpeed = player.speed * 5; // 7.5 пикселей/кадр
+                    const targetSpeed = player.speed * 5;
                     player.vx = (dx / len) * targetSpeed;
                     player.vy = (dy / len) * targetSpeed;
                 }
             }
 
-            // ----- Джойстик (всегда активен, скорость синхронизирована) -----
+            // Джойстик
             let joystick = null;
             const joystickZone = document.getElementById('joystickZone');
-            if (typeof nipplejs !== 'undefined') {
-                joystick = nipplejs.create({
-                    zone: joystickZone,
-                    mode: 'static',
-                    position: { left: '50%', bottom: '50%' },
-                    color: 'white',
-                    size: 120,
-                    threshold: 0.1,
-                    lockY: false,
-                    lockX: false
-                });
-                joystick.on('move', (evt, data) => {
-                    if (data.vector) {
-                        const targetSpeed = player.speed * 5; // такая же скорость как у клавиатуры
-                        player.vx = data.vector.x * targetSpeed;
-                        player.vy = -data.vector.y * targetSpeed;
-                    }
-                });
-                joystick.on('end', () => {
-                    player.vx = 0;
-                    player.vy = 0;
-                });
+            
+            function initJoystick() {
+                if (joystick) joystick.destroy();
+                if (typeof nipplejs !== 'undefined') {
+                    joystick = nipplejs.create({
+                        zone: joystickZone,
+                        mode: 'static',
+                        position: { left: '50%', bottom: '50%' },
+                        color: 'white',
+                        size: 120,
+                        threshold: 0.1,
+                        lockY: false,
+                        lockX: false
+                    });
+                    
+                    joystick.on('move', (evt, data) => {
+                        if (data.vector) {
+                            const targetSpeed = player.speed * 5;
+                            player.vx = data.vector.x * targetSpeed;
+                            player.vy = -data.vector.y * targetSpeed;
+                        }
+                    });
+                    
+                    joystick.on('end', () => {
+                        player.vx = 0;
+                        player.vy = 0;
+                    });
+                }
             }
 
-            // ----- Критически важный ресайз: canvas всегда равен окну, карта перестраивается -----
+            // Ресайз canvas под текущий экран (всегда горизонтальный)
             function resizeCanvas() {
-                // Получаем реальные размеры окна с учётом мобильных адресных строк
-                const w = window.innerWidth;
-                const h = window.innerHeight;
-
-                // Устанавливаем canvas точь-в-точь как экран (физические пиксели)
-                canvas.width = w;
-                canvas.height = h;
+                canvasWidth = window.innerWidth;
+                canvasHeight = window.innerHeight;
                 
-                // Обновляем глобальные переменные размера
-                canvasWidth = w;
-                canvasHeight = h;
+                canvas.width = canvasWidth;
+                canvas.height = canvasHeight;
 
-                // Количество тайлов по ширине и высоте (всегда целое, но карта может обрезаться?)
-                // Однако мы хотим, чтобы карта всегда заполняла экран, поэтому WORLD_WIDTH и WORLD_HEIGHT
-                // должны быть достаточными, чтобы покрыть весь canvas.
-                WORLD_WIDTH = Math.ceil(canvasWidth / TILE_SIZE);
-                WORLD_HEIGHT = Math.ceil(canvasHeight / TILE_SIZE);
+                // Карта всегда покрывает весь экран
+                WORLD_WIDTH = Math.ceil(canvasWidth / TILE_SIZE) + 2;  // +2 для запаса
+                WORLD_HEIGHT = Math.ceil(canvasHeight / TILE_SIZE) + 2;
 
-                // Перемещаем игрока в центр (в пикселях)
+                // Центрируем игрока
                 player.x = Math.floor((canvasWidth - player.size) / 2);
                 player.y = Math.floor((canvasHeight - player.size) / 2);
-
-                // Джойстик остаётся на месте, его положение фиксировано через CSS
             }
 
-            // Запуск ресайза при загрузке и повороте
-            resizeCanvas();
-            window.addEventListener('resize', () => {
-                resizeCanvas();
-                // перерисовать фон и игрока немедленно
-            });
+            // Проверка ориентации
+            function checkOrientation() {
+                // На мобильных устройствах проверяем портретную ориентацию
+                if (window.innerWidth < window.innerHeight && window.matchMedia("(max-width: 768px)").matches) {
+                    // Портрет - ничего не делаем, CSS покажет сообщение
+                    return false;
+                } else {
+                    // Альбом - включаем отображение
+                    document.body.style.display = 'flex';
+                    return true;
+                }
+            }
 
-            // ----- Игровой цикл (рендер и апдейт) -----
+            // Инициализация
+            function init() {
+                resizeCanvas();
+                initJoystick();
+                
+                // Слушаем изменения размера (поворот)
+                window.addEventListener('resize', () => {
+                    resizeCanvas();
+                    checkOrientation();
+                });
+                
+                // Запуск игрового цикла
+                gameLoop();
+                
+                // Периодический опрос клавиатуры
+                setInterval(handleKeyboard, 16);
+                
+                // Удаляем старый UI
+                const oldUi = document.getElementById('ui');
+                if (oldUi) oldUi.remove();
+            }
+
+            // Игровой цикл
             function gameLoop() {
                 drawBackground();
                 update();
@@ -322,20 +384,16 @@
                 requestAnimationFrame(gameLoop);
             }
 
-            // ----- Периодический опрос клавиатуры (для ПК) -----
-            setInterval(handleKeyboard, 16);
-
-            // Старт
-            gameLoop();
-
-            // Для чистоты эксперимента полностью скрываем старый UI через CSS, но и удалим его из DOM, чтобы наверняка
-            const oldUi = document.getElementById('ui');
-            if (oldUi) oldUi.remove();
-
-            // Небольшая задержка для Telegram, чтобы точно развернуться
-            setTimeout(() => {
-                resizeCanvas();
-            }, 50);
+            // Стартуем после загрузки
+            window.addEventListener('load', init);
+            
+            // Для Telegram запускаем сразу
+            if (document.readyState === 'complete') {
+                init();
+            } else {
+                window.addEventListener('load', init);
+            }
+            
         })();
     </script>
 </body>
