@@ -2,302 +2,341 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Soul Knight Clone - Fixed Walk + Design</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Soul Knight Clone - Fullscreen Map</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/nipplejs@0.9.0/dist/nipplejs.min.js"></script>
     <style>
-        body {
+        * {
             margin: 0;
             padding: 0;
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body {
             background: #000;
             display: flex;
             justify-content: center;
             align-items: center;
-            height: 100vh;
-            font-family: Arial, sans-serif;
-            color: white;
+            min-height: 100vh;
+            min-height: 100dvh; /* для современных мобильных браузеров */
             overflow: hidden;
-            touch-action: manipulation;
+            touch-action: pan-y pinch-zoom; /* разрешаем только вертикальные жесты, чтобы не ломать джойстик */
+            font-family: Arial, sans-serif;
         }
         canvas {
-            image-rendering: pixelated;
-            image-rendering: -moz-crisp-edges;
+            display: block;
+            width: 100%;
+            height: 100%;
+            object-fit: cover; /* растягиваем canvas четко по размерам экрана */
             image-rendering: crisp-edges;
-            max-width: 100vw;
-            max-height: 100vh;
+            image-rendering: pixelated;
         }
-        #ui {
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            z-index: 10;
-        }
+        /* Джойстик всегда доступен и фиксирован */
         #joystickZone {
-            position: absolute;
+            position: fixed;
             bottom: 20px;
             left: 20px;
-            width: 120px;
-            height: 120px;
-            z-index: 5;
-            display: none;
+            width: 130px;
+            height: 130px;
+            z-index: 100;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.15);
+            backdrop-filter: blur(4px);
+            border: 2px solid rgba(255,255,255,0.25);
+            display: block; /* всегда показываем, так как это мобильная версия */
+            touch-action: none;
         }
-        /* Джойстик теперь всегда виден на touch-устройствах (телефон, планшет), даже при повороте */
-        @media (pointer: coarse) {
-            #joystickZone {
-                display: block;
-            }
+        /* Скрываем старый ui полностью */
+        #ui {
+            display: none;
         }
     </style>
 </head>
 <body>
-    <div id="ui">
-        <div>WASD / Стрелки для ПК. Джойстик для телефона (как в Minecraft PE).</div>
-        <div>Персонаж виден! Без анимации, скорость меньше.</div>
-    </div>
     <canvas id="gameCanvas"></canvas>
     <div id="joystickZone"></div>
 
     <script>
-        // Telegram Web App
-        if (window.Telegram?.WebApp) {
-            Telegram.WebApp.ready();
-            Telegram.WebApp.expand();
-        }
-
-        const canvas = document.getElementById('gameCanvas');
-        const ctx = canvas.getContext('2d');
-        ctx.imageSmoothingEnabled = false;
-
-        // Горизонтальная карта (шире)
-        const TILE_SIZE = 32;
-        
-        // Переменные для динамического ресайза (при повороте телефона)
-        let WORLD_WIDTH, WORLD_HEIGHT;
-
-        // Player в центре
-        let player = {
-            x: 0, // будет задано в resize
-            y: 0,
-            vx: 0,
-            vy: 0,
-            speed: 1.5,
-            facing: 1,
-            size: TILE_SIZE
-        };
-
-        // Дизайн персонажа (красная рубашка, синие штаны, чёрные волосы)
-        const COLORS = {
-            skin: [255, 204, 153, 255],
-            shirt: [255, 0, 0, 255],
-            pants: [0, 0, 255, 255],
-            shoes: [0, 0, 0, 255],
-            hair: [0, 0, 0, 255],
-            transparent: [0, 0, 0, 0]
-        };
-
-        const SPRITE_SIZE = TILE_SIZE;
-        function setPixel(pixels, x, y, color) {
-            const idx = (Math.floor(y) * SPRITE_SIZE + Math.floor(x)) * 4;
-            if (idx >= 0 && idx < pixels.length) {
-                pixels[idx] = color[0];
-                pixels[idx + 1] = color[1];
-                pixels[idx + 2] = color[2];
-                pixels[idx + 3] = color[3];
+        (function() {
+            // Telegram Web App
+            if (window.Telegram?.WebApp) {
+                Telegram.WebApp.ready();
+                Telegram.WebApp.expand();
+                // дополнительно просим растянуться на весь экран
+                Telegram.WebApp.setHeaderColor?.( '#000000' );
             }
-        }
 
-        // Статичный спрайт (без анимации, руки соединены)
-        function createPlayerSprite(isRightFacing = true) {
-            const pixels = new Uint8ClampedArray(SPRITE_SIZE * SPRITE_SIZE * 4).fill(0);
-            const flipX = (x) => isRightFacing ? x : SPRITE_SIZE - 1 - x;
+            const canvas = document.getElementById('gameCanvas');
+            const ctx = canvas.getContext('2d');
+            ctx.imageSmoothingEnabled = false;
 
-            // Голова
-            for (let dx = -8; dx <= 8; dx++) {
-                for (let dy = -4; dy <= 6; dy++) {
-                    if (Math.abs(dx / 8) + Math.abs(dy / 6) < 1) {
-                        setPixel(pixels, flipX(16 + dx), 4 + dy, COLORS.skin);
+            // Размер тайла фиксирован, но карта всегда подстраивается под экран
+            const TILE_SIZE = 32;
+
+            // Эти переменные будут пересчитываться при каждом resize, но canvas всегда = экран
+            let canvasWidth, canvasHeight;
+            let WORLD_WIDTH, WORLD_HEIGHT;
+
+            // Игрок (спрайт 32x32)
+            let player = {
+                x: 0,
+                y: 0,
+                vx: 0,
+                vy: 0,
+                speed: 1.5,        // базовая скорость (пикс/кадр), через множитель 5 = 7.5
+                facing: 1,
+                size: TILE_SIZE
+            };
+
+            // Палитра персонажа
+            const COLORS = {
+                skin: [255, 204, 153, 255],
+                shirt: [255, 0, 0, 255],
+                pants: [0, 0, 255, 255],
+                shoes: [0, 0, 0, 255],
+                hair: [0, 0, 0, 255],
+                transparent: [0, 0, 0, 0]
+            };
+
+            // ----- Генерация спрайта (статичный, без анимации) -----
+            function setPixel(pixels, x, y, color) {
+                const idx = (Math.floor(y) * TILE_SIZE + Math.floor(x)) * 4;
+                if (idx >= 0 && idx < pixels.length) {
+                    pixels[idx] = color[0];
+                    pixels[idx+1] = color[1];
+                    pixels[idx+2] = color[2];
+                    pixels[idx+3] = color[3];
+                }
+            }
+
+            function createPlayerSprite(isRightFacing = true) {
+                const pixels = new Uint8ClampedArray(TILE_SIZE * TILE_SIZE * 4).fill(0);
+                const flipX = (x) => isRightFacing ? x : TILE_SIZE - 1 - x;
+
+                // Голова
+                for (let dx = -8; dx <= 8; dx++) {
+                    for (let dy = -4; dy <= 6; dy++) {
+                        if (Math.abs(dx/8) + Math.abs(dy/6) < 1) {
+                            setPixel(pixels, flipX(16 + dx), 4 + dy, COLORS.skin);
+                        }
                     }
                 }
-            }
-            // Волосы
-            for (let dx = -6; dx <= 6; dx++) {
-                for (let dy = -2; dy <= 2; dy++) {
-                    if (Math.abs(dx / 6) + Math.abs(dy / 2) < 1) {
-                        setPixel(pixels, flipX(16 + dx), 2 + dy, COLORS.hair);
+                // Волосы
+                for (let dx = -6; dx <= 6; dx++) {
+                    for (let dy = -2; dy <= 2; dy++) {
+                        if (Math.abs(dx/6) + Math.abs(dy/2) < 1) {
+                            setPixel(pixels, flipX(16 + dx), 2 + dy, COLORS.hair);
+                        }
                     }
                 }
-            }
-
-            // Тело
-            for (let dx = -7; dx <= 7; dx++) {
-                let height = 13 - Math.abs(dx);
-                for (let dy = 0; dy < height; dy++) {
-                    setPixel(pixels, flipX(16 + dx), 10 + dy, COLORS.shirt);
+                // Тело
+                for (let dx = -7; dx <= 7; dx++) {
+                    let height = 13 - Math.abs(dx);
+                    for (let dy = 0; dy < height; dy++) {
+                        setPixel(pixels, flipX(16 + dx), 10 + dy, COLORS.shirt);
+                    }
                 }
+                // Руки (утолщенные)
+                for (let dy = 0; dy < 9; dy++) {
+                    setPixel(pixels, flipX(9), 11 + dy, COLORS.skin);
+                    setPixel(pixels, flipX(10), 11 + dy, COLORS.skin);
+                    setPixel(pixels, flipX(22), 11 + dy, COLORS.skin);
+                    setPixel(pixels, flipX(23), 11 + dy, COLORS.skin);
+                }
+                // Ноги
+                for (let dy = 0; dy < 12; dy++) {
+                    setPixel(pixels, flipX(14), 22 + dy, COLORS.pants);
+                    setPixel(pixels, flipX(15), 22 + dy, COLORS.pants);
+                    setPixel(pixels, flipX(18), 22 + dy, COLORS.pants);
+                    setPixel(pixels, flipX(19), 22 + dy, COLORS.pants);
+                }
+                for (let dy = 8; dy < 12; dy++) {
+                    setPixel(pixels, flipX(15), 26 + dy, COLORS.shoes);
+                    setPixel(pixels, flipX(16), 26 + dy, COLORS.shoes);
+                    setPixel(pixels, flipX(19), 26 + dy, COLORS.shoes);
+                    setPixel(pixels, flipX(20), 26 + dy, COLORS.shoes);
+                }
+                return new ImageData(pixels, TILE_SIZE, TILE_SIZE);
             }
 
-            // Руки соединены (толще)
-            for (let dy = 0; dy < 9; dy++) {
-                setPixel(pixels, flipX(9), 11 + dy, COLORS.skin);
-                setPixel(pixels, flipX(10), 11 + dy, COLORS.skin);
-                setPixel(pixels, flipX(22), 11 + dy, COLORS.skin);
-                setPixel(pixels, flipX(23), 11 + dy, COLORS.skin);
+            // ----- Карта (только декор) -----
+            function getTileType(x, y) {
+                const noise = Math.sin(x * 0.1) * Math.cos(y * 0.1);
+                if (noise > 0.3) return 'grass';
+                if (noise < -0.3) return 'sand';
+                return 'dirt';
             }
 
-            // Ноги статичные (толще)
-            for (let dy = 0; dy < 12; dy++) {
-                setPixel(pixels, flipX(14), 22 + dy, COLORS.pants);
-                setPixel(pixels, flipX(15), 22 + dy, COLORS.pants);
-                setPixel(pixels, flipX(18), 22 + dy, COLORS.pants);
-                setPixel(pixels, flipX(19), 22 + dy, COLORS.pants);
-            }
-            for (let dy = 8; dy < 12; dy++) {
-                setPixel(pixels, flipX(15), 26 + dy, COLORS.shoes);
-                setPixel(pixels, flipX(16), 26 + dy, COLORS.shoes);
-                setPixel(pixels, flipX(19), 26 + dy, COLORS.shoes);
-                setPixel(pixels, flipX(20), 26 + dy, COLORS.shoes);
-            }
+            const TILE_COLORS = {
+                grass: ['#4A7C59', '#5A8C69', '#3A6C49'],
+                sand:  ['#C2B280', '#D2C290', '#B2A270'],
+                dirt:  ['#8B7355', '#9B8555', '#7B6545']
+            };
 
-            return new ImageData(pixels, SPRITE_SIZE, SPRITE_SIZE);
-        }
+            function drawBackground() {
+                // Небо градиент (верхние 30% экрана)
+                const grad = ctx.createLinearGradient(0, 0, 0, canvasHeight * 0.3);
+                grad.addColorStop(0, '#87CEEB');
+                grad.addColorStop(1, '#B0E0E6');
+                ctx.fillStyle = grad;
+                ctx.fillRect(0, 0, canvasWidth, canvasHeight * 0.3);
 
-        // Зелено-песчаный дизайн
-        function getTile(x, y) {
-            const noise = Math.sin(x * 0.1) * Math.cos(y * 0.1);
-            if (noise > 0.3) return 'grass';
-            if (noise < -0.3) return 'sand';
-            return 'dirt';
-        }
-
-        const TILE_COLORS = {
-            grass: ['#4A7C59', '#5A8C69', '#3A6C49'],
-            sand: ['#C2B280', '#D2C290', '#B2A270'],
-            dirt: ['#8B7355', '#9B8555', '#7B6545']
-        };
-
-        function drawBackground() {
-            // Небо градиент
-            const grad = ctx.createLinearGradient(0, 0, 0, canvas.height * 0.3);
-            grad.addColorStop(0, '#87CEEB');
-            grad.addColorStop(1, '#B0E0E6');
-            ctx.fillStyle = grad;
-            ctx.fillRect(0, 0, canvas.width, canvas.height * 0.3);
-
-            // Тайлы
-            for (let x = 0; x < WORLD_WIDTH; x++) {
+                // Тайлы отрисовываются по целочисленным индексам
                 for (let y = 0; y < WORLD_HEIGHT; y++) {
-                    const type = getTile(x, y);
-                    const colors = TILE_COLORS[type];
-                    ctx.fillStyle = colors[(x + y) % 3];
-                    ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+                    for (let x = 0; x < WORLD_WIDTH; x++) {
+                        const type = getTileType(x, y);
+                        const colors = TILE_COLORS[type];
+                        ctx.fillStyle = colors[(x + y) % 3];
+                        ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+                    }
                 }
             }
-        }
 
-        // Draw player
-        function drawPlayer() {
-            const sprite = createPlayerSprite(player.facing === 1);
-            ctx.putImageData(sprite, player.x, player.y);
-        }
-
-        // Update (больше friction для меньше инерции)
-        function update() {
-            player.x += player.vx;
-            player.y += player.vy;
-
-            // Границы
-            player.x = Math.max(0, Math.min(canvas.width - SPRITE_SIZE, player.x));
-            player.y = Math.max(0, Math.min(canvas.height - SPRITE_SIZE, player.y));
-
-            // Friction
-            player.vx *= 0.8;
-            player.vy *= 0.8;
-            if (Math.abs(player.vx) < 0.1) player.vx = 0;
-            if (Math.abs(player.vy) < 0.1) player.vy = 0;
-
-            player.walking = Math.abs(player.vx) > 0.1 || Math.abs(player.vy) > 0.1;
-            if (player.vx !== 0) player.facing = player.vx > 0 ? 1 : -1;
-        }
-
-        // Game loop
-        function gameLoop() {
-            drawBackground();
-            update();
-            drawPlayer();
-            requestAnimationFrame(gameLoop);
-        }
-
-        // Клавиатура (WASD + стрелки) — теперь скорость точно такая же, как на джойстике
-        const keys = {};
-        document.addEventListener('keydown', (e) => { keys[e.key.toLowerCase()] = true; });
-        document.addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
-
-        function handleKeyboard() {
-            let dx = 0;
-            let dy = 0;
-            if (keys['a'] || keys['arrowleft']) dx -= 1;
-            if (keys['d'] || keys['arrowright']) dx += 1;
-            if (keys['w'] || keys['arrowup']) dy -= 1;
-            if (keys['s'] || keys['arrowdown']) dy += 1;
-
-            if (dx !== 0 || dy !== 0) {
-                const len = Math.sqrt(dx * dx + dy * dy);
-                // Скорость теперь одинаковая на ПК и телефоне (7.5 пикселей за кадр максимум)
-                const targetSpeed = player.speed * 5;
-                player.vx = (dx / len) * targetSpeed;
-                player.vy = (dy / len) * targetSpeed;
+            // ----- Отрисовка игрока -----
+            function drawPlayer() {
+                const sprite = createPlayerSprite(player.facing === 1);
+                ctx.putImageData(sprite, player.x, player.y);
             }
-        }
 
-        // Joystick — скорость теперь точно такая же, как на ПК
-        let joystick = null;
-        const joystickZone = document.getElementById('joystickZone');
-        if (nipplejs) {
-            joystick = nipplejs.create({
-                zone: joystickZone,
-                mode: 'static',
-                position: { left: '50%', bottom: '50%' },
-                color: 'white',
-                size: 120,
-                threshold: 0.1
-            });
-            joystick.on('move', (evt, data) => {
-                if (data.vector) {
-                    // Скорость теперь одинаковая с ПК
-                    const targetSpeed = player.speed * 5;
-                    player.vx = data.vector.x * targetSpeed;
-                    player.vy = -data.vector.y * targetSpeed;
+            // ----- Физика (инерция) -----
+            function update() {
+                player.x += player.vx;
+                player.y += player.vy;
+
+                // Границы карты
+                player.x = Math.max(0, Math.min(canvasWidth - player.size, player.x));
+                player.y = Math.max(0, Math.min(canvasHeight - player.size, player.y));
+
+                // Трение
+                player.vx *= 0.8;
+                player.vy *= 0.8;
+                if (Math.abs(player.vx) < 0.1) player.vx = 0;
+                if (Math.abs(player.vy) < 0.1) player.vy = 0;
+
+                if (player.vx !== 0) player.facing = player.vx > 0 ? 1 : -1;
+            }
+
+            // ----- Управление с клавиатуры (для отладки на ПК) -----
+            const keys = {};
+            document.addEventListener('keydown', (e) => {
+                const key = e.key.toLowerCase();
+                keys[key] = true;
+                // стрелки
+                if (e.key.startsWith('Arrow')) {
+                    const arrow = e.key.toLowerCase().replace('arrow','');
+                    keys[arrow] = true; // для единообразия
                 }
             });
-            joystick.on('end', () => {
-                player.vx = 0;
-                player.vy = 0;
+            document.addEventListener('keyup', (e) => {
+                const key = e.key.toLowerCase();
+                keys[key] = false;
+                if (e.key.startsWith('Arrow')) {
+                    const arrow = e.key.toLowerCase().replace('arrow','');
+                    keys[arrow] = false;
+                }
             });
-        }
 
-        // Динамический ресайз — игра всегда аккуратно занимает экран горизонтально
-        function resizeCanvas() {
-            canvas.width = Math.floor(window.innerWidth / TILE_SIZE) * TILE_SIZE * 1.5;
-            canvas.height = Math.floor(window.innerHeight / TILE_SIZE) * TILE_SIZE;
-            WORLD_WIDTH = canvas.width / TILE_SIZE;
-            WORLD_HEIGHT = canvas.height / TILE_SIZE;
+            function handleKeyboard() {
+                let dx = 0, dy = 0;
+                if (keys['a'] || keys['left']) dx -= 1;
+                if (keys['d'] || keys['right']) dx += 1;
+                if (keys['w'] || keys['up']) dy -= 1;
+                if (keys['s'] || keys['down']) dy += 1;
 
-            // Игрок всегда в центре после поворота
-            player.x = canvas.width / 2 - TILE_SIZE / 2;
-            player.y = canvas.height / 2 - TILE_SIZE / 2;
-        }
+                if (dx !== 0 || dy !== 0) {
+                    const len = Math.sqrt(dx*dx + dy*dy);
+                    const targetSpeed = player.speed * 5; // 7.5 пикселей/кадр
+                    player.vx = (dx / len) * targetSpeed;
+                    player.vy = (dy / len) * targetSpeed;
+                }
+            }
 
-        // Инициализация размеров
-        resizeCanvas();
-        // Следим за поворотом телефона
-        window.addEventListener('resize', resizeCanvas);
+            // ----- Джойстик (всегда активен, скорость синхронизирована) -----
+            let joystick = null;
+            const joystickZone = document.getElementById('joystickZone');
+            if (typeof nipplejs !== 'undefined') {
+                joystick = nipplejs.create({
+                    zone: joystickZone,
+                    mode: 'static',
+                    position: { left: '50%', bottom: '50%' },
+                    color: 'white',
+                    size: 120,
+                    threshold: 0.1,
+                    lockY: false,
+                    lockX: false
+                });
+                joystick.on('move', (evt, data) => {
+                    if (data.vector) {
+                        const targetSpeed = player.speed * 5; // такая же скорость как у клавиатуры
+                        player.vx = data.vector.x * targetSpeed;
+                        player.vy = -data.vector.y * targetSpeed;
+                    }
+                });
+                joystick.on('end', () => {
+                    player.vx = 0;
+                    player.vy = 0;
+                });
+            }
 
-        // Main input loop
-        setInterval(handleKeyboard, 16);
-        gameLoop();
+            // ----- Критически важный ресайз: canvas всегда равен окну, карта перестраивается -----
+            function resizeCanvas() {
+                // Получаем реальные размеры окна с учётом мобильных адресных строк
+                const w = window.innerWidth;
+                const h = window.innerHeight;
 
-        console.log('Исправлено! Скорость одинаковая на ПК и телефоне, джойстик не исчезает при повороте, игра идеально горизонтальная!');
+                // Устанавливаем canvas точь-в-точь как экран (физические пиксели)
+                canvas.width = w;
+                canvas.height = h;
+                
+                // Обновляем глобальные переменные размера
+                canvasWidth = w;
+                canvasHeight = h;
+
+                // Количество тайлов по ширине и высоте (всегда целое, но карта может обрезаться?)
+                // Однако мы хотим, чтобы карта всегда заполняла экран, поэтому WORLD_WIDTH и WORLD_HEIGHT
+                // должны быть достаточными, чтобы покрыть весь canvas.
+                WORLD_WIDTH = Math.ceil(canvasWidth / TILE_SIZE);
+                WORLD_HEIGHT = Math.ceil(canvasHeight / TILE_SIZE);
+
+                // Перемещаем игрока в центр (в пикселях)
+                player.x = Math.floor((canvasWidth - player.size) / 2);
+                player.y = Math.floor((canvasHeight - player.size) / 2);
+
+                // Джойстик остаётся на месте, его положение фиксировано через CSS
+            }
+
+            // Запуск ресайза при загрузке и повороте
+            resizeCanvas();
+            window.addEventListener('resize', () => {
+                resizeCanvas();
+                // перерисовать фон и игрока немедленно
+            });
+
+            // ----- Игровой цикл (рендер и апдейт) -----
+            function gameLoop() {
+                drawBackground();
+                update();
+                drawPlayer();
+                requestAnimationFrame(gameLoop);
+            }
+
+            // ----- Периодический опрос клавиатуры (для ПК) -----
+            setInterval(handleKeyboard, 16);
+
+            // Старт
+            gameLoop();
+
+            // Для чистоты эксперимента полностью скрываем старый UI через CSS, но и удалим его из DOM, чтобы наверняка
+            const oldUi = document.getElementById('ui');
+            if (oldUi) oldUi.remove();
+
+            // Небольшая задержка для Telegram, чтобы точно развернуться
+            setTimeout(() => {
+                resizeCanvas();
+            }, 50);
+        })();
     </script>
 </body>
 </html>
