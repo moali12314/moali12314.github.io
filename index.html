@@ -42,7 +42,8 @@
             z-index: 5;
             display: none;
         }
-        @media (max-width: 768px) {
+        /* Джойстик теперь всегда виден на touch-устройствах (телефон, планшет), даже при повороте */
+        @media (pointer: coarse) {
             #joystickZone {
                 display: block;
             }
@@ -70,18 +71,17 @@
 
         // Горизонтальная карта (шире)
         const TILE_SIZE = 32;
-        canvas.width = Math.floor(window.innerWidth / TILE_SIZE) * TILE_SIZE * 1.5;
-        canvas.height = Math.floor(window.innerHeight / TILE_SIZE) * TILE_SIZE;
-        const WORLD_WIDTH = canvas.width / TILE_SIZE;
-        const WORLD_HEIGHT = canvas.height / TILE_SIZE;
+        
+        // Переменные для динамического ресайза (при повороте телефона)
+        let WORLD_WIDTH, WORLD_HEIGHT;
 
         // Player в центре
         let player = {
-            x: canvas.width / 2 - TILE_SIZE / 2,
-            y: canvas.height / 2 - TILE_SIZE / 2,
+            x: 0, // будет задано в resize
+            y: 0,
             vx: 0,
             vy: 0,
-            speed: 1.5, // Меньше скорости
+            speed: 1.5,
             facing: 1,
             size: TILE_SIZE
         };
@@ -228,19 +228,29 @@
             requestAnimationFrame(gameLoop);
         }
 
-        // Клавиатура (WASD + стрелки)
+        // Клавиатура (WASD + стрелки) — теперь скорость точно такая же, как на джойстике
         const keys = {};
         document.addEventListener('keydown', (e) => { keys[e.key.toLowerCase()] = true; });
         document.addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
 
         function handleKeyboard() {
-            if (keys['a'] || keys['arrowleft']) player.vx -= player.speed;
-            if (keys['d'] || keys['arrowright']) player.vx += player.speed;
-            if (keys['w'] || keys['arrowup']) player.vy -= player.speed;
-            if (keys['s'] || keys['arrowdown']) player.vy += player.speed;
+            let dx = 0;
+            let dy = 0;
+            if (keys['a'] || keys['arrowleft']) dx -= 1;
+            if (keys['d'] || keys['arrowright']) dx += 1;
+            if (keys['w'] || keys['arrowup']) dy -= 1;
+            if (keys['s'] || keys['arrowdown']) dy += 1;
+
+            if (dx !== 0 || dy !== 0) {
+                const len = Math.sqrt(dx * dx + dy * dy);
+                // Скорость теперь одинаковая на ПК и телефоне (7.5 пикселей за кадр максимум)
+                const targetSpeed = player.speed * 5;
+                player.vx = (dx / len) * targetSpeed;
+                player.vy = (dy / len) * targetSpeed;
+            }
         }
 
-        // Joystick
+        // Joystick — скорость теперь точно такая же, как на ПК
         let joystick = null;
         const joystickZone = document.getElementById('joystickZone');
         if (nipplejs) {
@@ -254,8 +264,10 @@
             });
             joystick.on('move', (evt, data) => {
                 if (data.vector) {
-                    player.vx = data.vector.x * player.speed * 2;
-                    player.vy = -data.vector.y * player.speed * 2;
+                    // Скорость теперь одинаковая с ПК
+                    const targetSpeed = player.speed * 5;
+                    player.vx = data.vector.x * targetSpeed;
+                    player.vy = -data.vector.y * targetSpeed;
                 }
             });
             joystick.on('end', () => {
@@ -264,11 +276,28 @@
             });
         }
 
+        // Динамический ресайз — игра всегда аккуратно занимает экран горизонтально
+        function resizeCanvas() {
+            canvas.width = Math.floor(window.innerWidth / TILE_SIZE) * TILE_SIZE * 1.5;
+            canvas.height = Math.floor(window.innerHeight / TILE_SIZE) * TILE_SIZE;
+            WORLD_WIDTH = canvas.width / TILE_SIZE;
+            WORLD_HEIGHT = canvas.height / TILE_SIZE;
+
+            // Игрок всегда в центре после поворота
+            player.x = canvas.width / 2 - TILE_SIZE / 2;
+            player.y = canvas.height / 2 - TILE_SIZE / 2;
+        }
+
+        // Инициализация размеров
+        resizeCanvas();
+        // Следим за поворотом телефона
+        window.addEventListener('resize', resizeCanvas);
+
         // Main input loop
         setInterval(handleKeyboard, 16);
         gameLoop();
 
-        console.log('Исправлено! WASD + стрелки работают, меньше скорости, без анимации, горизонтальная карта, дизайн изменён, руки соединены!');
+        console.log('Исправлено! Скорость одинаковая на ПК и телефоне, джойстик не исчезает при повороте, игра идеально горизонтальная!');
     </script>
 </body>
 </html>
