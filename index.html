@@ -104,17 +104,17 @@
             ctx.imageSmoothingEnabled = false;
             // Фиксированный размер тайла
             const TILE_SIZE = 32;
+            const WORLD_WIDTH = 40; // Фиксированная ширина мира в тайлах
+            const WORLD_HEIGHT = 20; // Фиксированная высота мира в тайлах
+            const WORLD_PIXEL_WIDTH = WORLD_WIDTH * TILE_SIZE;
+            const WORLD_PIXEL_HEIGHT = WORLD_HEIGHT * TILE_SIZE;
            
             // Переменные для размеров canvas
             let canvasWidth, canvasHeight;
-            let WORLD_WIDTH = 200; // Широкий горизонтальный мир (в тайлах)
-            let WORLD_HEIGHT;
-            // Камера
-            let camera = { x: 0, y: 0 };
             // Игрок
             let player = {
-                x: 0,
-                y: 0,
+                x: (WORLD_PIXEL_WIDTH - TILE_SIZE) / 2,
+                y: (WORLD_PIXEL_HEIGHT - TILE_SIZE) / 2,
                 vx: 0,
                 vy: 0,
                 speed: 1.5, // базовая скорость
@@ -188,6 +188,17 @@
                 }
                 return new ImageData(pixels, TILE_SIZE, TILE_SIZE);
             }
+            // Создание оффскрин канвасов для спрайтов игрока
+            function createOffscreenSprite(isRightFacing) {
+                const offCanvas = document.createElement('canvas');
+                offCanvas.width = TILE_SIZE;
+                offCanvas.height = TILE_SIZE;
+                const offCtx = offCanvas.getContext('2d');
+                offCtx.putImageData(createPlayerSprite(isRightFacing), 0, 0);
+                return offCanvas;
+            }
+            const playerSpriteRight = createOffscreenSprite(true);
+            const playerSpriteLeft = createOffscreenSprite(false);
             // Генерация типа тайла
             function getTileType(x, y) {
                 const noise = Math.sin(x * 0.05) * Math.cos(y * 0.05);
@@ -202,39 +213,33 @@
             };
             // Отрисовка фона (карты)
             function drawBackground() {
-                // Градиент неба (фиксированный, не скроллится)
-                const grad = ctx.createLinearGradient(0, 0, 0, canvasHeight * 0.3);
+                // Градиент неба
+                const grad = ctx.createLinearGradient(0, 0, 0, WORLD_PIXEL_HEIGHT * 0.3);
                 grad.addColorStop(0, '#87CEEB');
                 grad.addColorStop(1, '#B0E0E6');
                 ctx.fillStyle = grad;
-                ctx.fillRect(0, 0, canvasWidth, canvasHeight * 0.3);
-                // Тайлы - горизонтальная карта с камерой (скролл только по X)
-                const startX = Math.floor(camera.x / TILE_SIZE);
-                const endX = startX + Math.ceil(canvasWidth / TILE_SIZE) + 1;
+                ctx.fillRect(0, 0, WORLD_PIXEL_WIDTH, WORLD_PIXEL_HEIGHT * 0.3);
+                // Тайлы
                 for (let y = 0; y < WORLD_HEIGHT; y++) {
-                    for (let x = startX; x < endX; x++) {
-                        if (x < 0 || x >= WORLD_WIDTH) continue;
+                    for (let x = 0; x < WORLD_WIDTH; x++) {
                         const type = getTileType(x, y);
                         ctx.fillStyle = TILE_COLORS[type];
-                        ctx.fillRect((x * TILE_SIZE) - camera.x, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+                        ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
                     }
                 }
             }
             // Отрисовка игрока
             function drawPlayer() {
-                const sprite = createPlayerSprite(player.facing === 1);
-                ctx.putImageData(sprite, player.x - camera.x, player.y);
+                const sprite = player.facing === 1 ? playerSpriteRight : playerSpriteLeft;
+                ctx.drawImage(sprite, player.x, player.y);
             }
             // Обновление физики
             function update() {
                 player.x += player.vx;
                 player.y += player.vy;
-                // Границы карты (горизонтальный скролл, вертикальный фиксирован)
-                player.x = Math.max(0, Math.min((WORLD_WIDTH * TILE_SIZE) - player.size, player.x));
-                player.y = Math.max(0, Math.min(canvasHeight - player.size, player.y));
-                // Обновление камеры (только по X, следует за игроком)
-                camera.x = player.x - (canvasWidth / 2) + (player.size / 2);
-                camera.x = Math.max(0, Math.min((WORLD_WIDTH * TILE_SIZE) - canvasWidth, camera.x));
+                // Границы карты
+                player.x = Math.max(0, Math.min(WORLD_PIXEL_WIDTH - player.size, player.x));
+                player.y = Math.max(0, Math.min(WORLD_PIXEL_HEIGHT - player.size, player.y));
                 // Трение
                 player.vx *= 0.8;
                 player.vy *= 0.8;
@@ -317,11 +322,6 @@
                
                 canvas.width = canvasWidth;
                 canvas.height = canvasHeight;
-                // Высота мира фиксирована по экрану, ширина большая
-                WORLD_HEIGHT = Math.ceil(canvasHeight / TILE_SIZE);
-                // Центрируем игрока по Y, старт по X
-                player.x = Math.floor((canvasWidth - player.size) / 2);
-                player.y = Math.floor((canvasHeight - player.size) / 2);
             }
             // Проверка ориентации
             function checkOrientation() {
@@ -365,9 +365,21 @@
             }
             // Игровой цикл
             function gameLoop() {
+                ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+               
+                const scale = Math.min(canvasWidth / WORLD_PIXEL_WIDTH, canvasHeight / WORLD_PIXEL_HEIGHT);
+                const offsetX = (canvasWidth - WORLD_PIXEL_WIDTH * scale) / 2;
+                const offsetY = (canvasHeight - WORLD_PIXEL_HEIGHT * scale) / 2;
+               
+                ctx.save();
+                ctx.translate(offsetX, offsetY);
+                ctx.scale(scale, scale);
+               
                 drawBackground();
                 update();
                 drawPlayer();
+               
+                ctx.restore();
                 requestAnimationFrame(gameLoop);
             }
             // Стартуем после загрузки
