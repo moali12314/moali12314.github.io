@@ -14,7 +14,6 @@
             user-select: none;
             -webkit-tap-highlight-color: transparent;
         }
-
         html, body {
             width: 100%;
             height: 100%;
@@ -22,14 +21,12 @@
             position: fixed;
             background: #000;
         }
-
         body {
             display: flex;
             justify-content: center;
             align-items: center;
             touch-action: pan-y pinch-zoom;
         }
-
         @media (max-width: 768px) and (orientation: portrait) {
             body::before {
                 content: "ПОВЕРНИТЕ ЭКРАН";
@@ -56,7 +53,6 @@
                 display: none !important;
             }
         }
-
         canvas {
             display: block;
             width: 100%;
@@ -65,7 +61,6 @@
             image-rendering: crisp-edges;
             image-rendering: pixelated;
         }
-
         #joystickZone {
             position: fixed;
             bottom: 30px;
@@ -81,17 +76,6 @@
             display: block;
             touch-action: none;
             pointer-events: auto;
-        }
-
-        /* Анимированные частицы для эффекта */
-        #particles {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            z-index: 50;
         }
     </style>
 </head>
@@ -114,39 +98,28 @@
             ctx.imageSmoothingEnabled = false;
 
             // ==============================================
-            // ИСПРАВЛЕННЫЕ НАСТРОЙКИ
+            // НАСТРОЙКИ
             // ==============================================
-            // Размер тайла должен быть МИНИМУМ равен самому большому размеру персонажа
-            const TILE_SIZE = 64; // Увеличил до 64, чтобы вместить персонажа 48
+            const TILE_SIZE = 64;
+            const IDLE_WIDTH  = 48;
+            const IDLE_HEIGHT = 64;
+            const RUN_WIDTH   = 56;
+            const RUN_HEIGHT  = 64;
 
-            // РАЗМЕРЫ ПЕРСОНАЖА
-            const IDLE_WIDTH = 48;     // Ширина в покое
-            const IDLE_HEIGHT = 64;    // Высота в покое
-            const RUN_WIDTH = 56;       // Ширина при беге
-            const RUN_HEIGHT = 64;      // Высота при беге
-
-            // Размеры мира (уменьшил, чтобы влезло на экран)
-            const WORLD_WIDTH = 30;
+            const WORLD_WIDTH  = 30;
             const WORLD_HEIGHT = 15;
-            // ==============================================
 
-            // Мир в пикселях
-            const WORLD_PIXEL_WIDTH = WORLD_WIDTH * TILE_SIZE;
+            const WORLD_PIXEL_WIDTH  = WORLD_WIDTH  * TILE_SIZE;
             const WORLD_PIXEL_HEIGHT = WORLD_HEIGHT * TILE_SIZE;
 
-            // Переменные для размеров canvas
             let canvasWidth, canvasHeight;
 
-            // ==============================================
-            // ПУТИ К ФОТОГРАФИЯМ
-            // ==============================================
+            // Пути к спрайтам (замени на свои файлы)
             const PLAYER_IDLE_IMAGE = 'baserun.png';
             const PLAYER_RUN1_IMAGE = 'run1.png';
             const PLAYER_RUN2_IMAGE = 'run2.png';
             const PLAYER_RUN3_IMAGE = 'run3.png';
-            // ==============================================
 
-            // Загружаем все изображения с обработкой ошибок
             const playerImages = {
                 idle: new Image(),
                 run: [new Image(), new Image(), new Image()]
@@ -157,24 +130,18 @@
                     imgElement.onload = resolve;
                     imgElement.onerror = () => {
                         console.error('Ошибка загрузки:', src);
-                        // Создаем цветной квадрат вместо изображения
-                        const canvas = document.createElement('canvas');
-                        canvas.width = 64;
-                        canvas.height = 64;
-                        const ctx = canvas.getContext('2d');
-                        ctx.fillStyle = '#FF4444';
-                        ctx.fillRect(0, 0, 64, 64);
-                        ctx.strokeStyle = '#FFFFFF';
-                        ctx.lineWidth = 4;
-                        ctx.strokeRect(2, 2, 60, 60);
-                        imgElement.src = canvas.toDataURL();
+                        const c = document.createElement('canvas');
+                        c.width = c.height = 64;
+                        const ct = c.getContext('2d');
+                        ct.fillStyle = '#FF4444';
+                        ct.fillRect(0,0,64,64);
+                        imgElement.src = c.toDataURL();
                         resolve();
                     };
                     imgElement.src = src;
                 });
             }
 
-            // Загружаем все изображения
             Promise.all([
                 loadImage(PLAYER_IDLE_IMAGE, playerImages.idle),
                 loadImage(PLAYER_RUN1_IMAGE, playerImages.run[0]),
@@ -182,7 +149,6 @@
                 loadImage(PLAYER_RUN3_IMAGE, playerImages.run[2])
             ]);
 
-            // Игрок
             let player = {
                 x: (WORLD_PIXEL_WIDTH - IDLE_WIDTH) / 2,
                 y: (WORLD_PIXEL_HEIGHT - IDLE_HEIGHT) / 2,
@@ -195,18 +161,14 @@
                 isMoving: false
             };
 
-            // Переменные для анимации
             let animationFrame = 0;
-            const ANIMATION_SPEED = 6; // Увеличил скорость анимации
+            const ANIMATION_SPEED = 6;
             let frameCounter = 0;
 
-            // Генерация типа тайла с более интересным миром
             function getTileType(x, y) {
-                // Создаем острова и дорожки
                 const noise1 = Math.sin(x * 0.2) * Math.cos(y * 0.2);
                 const noise2 = Math.sin(x * 0.1 + 2) * Math.cos(y * 0.15 + 1);
                 const combined = noise1 * 0.7 + noise2 * 0.3;
-                
                 if (combined > 0.4) return 'grass';
                 if (combined < -0.3) return 'water';
                 if (Math.abs(combined) < 0.1) return 'path';
@@ -215,50 +177,29 @@
 
             const TILE_COLORS = {
                 grass: '#4A7C59',
-                sand: '#C2B280',
-                dirt: '#8B7355',
+                dirt:  '#8B7355',
                 water: '#4A90E2',
-                path: '#C0A080'
+                path:  '#C0A080'
             };
 
-            // Отрисовка фона с эффектами
             function drawBackground() {
-                // Небо с градиентом
                 const grad = ctx.createLinearGradient(0, 0, 0, WORLD_PIXEL_HEIGHT);
-                grad.addColorStop(0, '#1a1f2e');
+                grad.addColorStop(0,   '#1a1f2e');
                 grad.addColorStop(0.3, '#2a2f3e');
                 grad.addColorStop(0.7, '#1f2a2f');
-                grad.addColorStop(1, '#152025');
+                grad.addColorStop(1,   '#152025');
                 ctx.fillStyle = grad;
                 ctx.fillRect(0, 0, WORLD_PIXEL_WIDTH, WORLD_PIXEL_HEIGHT);
 
-                // Рисуем тайлы
                 for (let y = 0; y < WORLD_HEIGHT; y++) {
                     for (let x = 0; x < WORLD_WIDTH; x++) {
                         const type = getTileType(x, y);
-                        
-                        // Основной цвет
                         ctx.fillStyle = TILE_COLORS[type];
                         ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
-                        
-                        // Добавляем текстуру
-                        ctx.strokeStyle = 'rgba(0,0,0,0.1)';
-                        ctx.lineWidth = 1;
-                        ctx.strokeRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
-                        
-                        // Украшения для разных типов
-                        if (type === 'grass') {
-                            ctx.fillStyle = '#5a8c69';
-                            ctx.fillRect(x * TILE_SIZE + 4, y * TILE_SIZE + 4, 2, 2);
-                        } else if (type === 'water') {
-                            ctx.fillStyle = 'rgba(255,255,255,0.1)';
-                            ctx.fillRect(x * TILE_SIZE + 8, y * TILE_SIZE + 8, 4, 4);
-                        }
                     }
                 }
             }
 
-            // Отрисовка игрока
             function drawPlayer() {
                 let currentImage;
                 let currentWidth, currentHeight;
@@ -266,7 +207,6 @@
                 if (player.isMoving) {
                     currentWidth = RUN_WIDTH;
                     currentHeight = RUN_HEIGHT;
-
                     frameCounter++;
                     if (frameCounter >= ANIMATION_SPEED) {
                         frameCounter = 0;
@@ -279,25 +219,12 @@
                     currentImage = playerImages.idle;
                 }
 
-                // Обновляем размеры игрока
                 player.width = currentWidth;
                 player.height = currentHeight;
 
-                // Эффект тени
                 ctx.save();
-                ctx.shadowColor = 'rgba(0,0,0,0.5)';
-                ctx.shadowBlur = 10;
-                ctx.shadowOffsetY = 5;
 
-                // Рисуем тень под персонажем
-                ctx.fillStyle = 'rgba(0,0,0,0.3)';
-                ctx.beginPath();
-                ctx.ellipse(player.x + currentWidth/2, player.y + currentHeight, currentWidth/2, 5, 0, 0, Math.PI*2);
-                ctx.fill();
-
-                // Рисуем персонажа
                 if (currentImage && currentImage.complete && currentImage.naturalHeight !== 0) {
-                    ctx.shadowBlur = 0;
                     if (player.facing === -1) {
                         ctx.translate(player.x + currentWidth, player.y);
                         ctx.scale(-1, 1);
@@ -306,51 +233,34 @@
                         ctx.drawImage(currentImage, player.x, player.y, currentWidth, currentHeight);
                     }
                 } else {
-                    // Отладочный квадрат
                     ctx.fillStyle = '#FF4444';
                     ctx.fillRect(player.x, player.y, currentWidth, currentHeight);
                 }
-                ctx.restore();
 
-                // Имя персонажа
-                ctx.save();
-                ctx.font = 'bold 12px Arial';
-                ctx.fillStyle = '#FFFFFF';
-                ctx.shadowColor = '#000000';
-                ctx.shadowBlur = 4;
-                ctx.fillText('БОЕЦ', player.x, player.y - 10);
                 ctx.restore();
             }
 
-            // Обновление физики
             function update() {
-                const prevVx = player.vx;
-                const prevVy = player.vy;
-
-                const currentWidth = player.isMoving ? RUN_WIDTH : IDLE_WIDTH;
+                const currentWidth  = player.isMoving ? RUN_WIDTH  : IDLE_WIDTH;
                 const currentHeight = player.isMoving ? RUN_HEIGHT : IDLE_HEIGHT;
 
                 player.x += player.vx;
                 player.y += player.vy;
 
-                // Границы
                 player.x = Math.max(0, Math.min(WORLD_PIXEL_WIDTH - currentWidth, player.x));
                 player.y = Math.max(0, Math.min(WORLD_PIXEL_HEIGHT - currentHeight, player.y));
 
-                // Торможение
                 player.vx *= 0.85;
                 player.vy *= 0.85;
                 if (Math.abs(player.vx) < 0.1) player.vx = 0;
                 if (Math.abs(player.vy) < 0.1) player.vy = 0;
 
-                // Проверка движения
                 const wasMoving = player.isMoving;
                 player.isMoving = (Math.abs(player.vx) > 0.1 || Math.abs(player.vy) > 0.1);
 
-                // Направление
                 if (player.vx !== 0) player.facing = player.vx > 0 ? 1 : -1;
 
-                // Корректировка позиции при смене состояния
+                // Корректировка центра при смене анимации
                 if (wasMoving && !player.isMoving) {
                     const centerX = player.x + RUN_WIDTH / 2;
                     player.x = centerX - IDLE_WIDTH / 2;
@@ -358,7 +268,6 @@
                     animationFrame = 0;
                     frameCounter = 0;
                 }
-
                 if (!wasMoving && player.isMoving) {
                     const centerX = player.x + IDLE_WIDTH / 2;
                     player.x = centerX - RUN_WIDTH / 2;
@@ -366,25 +275,18 @@
                 }
             }
 
-            // Управление с клавиатуры
+            // ────────────────────────────────────────────────
+            // Клавиатура
+            // ────────────────────────────────────────────────
             const keys = {};
-            document.addEventListener('keydown', (e) => {
-                const key = e.key.toLowerCase();
-                keys[key] = true;
-                if (e.key.startsWith('Arrow')) {
-                    keys[e.key.toLowerCase()] = true;
-                }
-                if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'w', 'a', 's', 'd'].includes(key)) {
+            document.addEventListener('keydown', e => {
+                keys[e.key.toLowerCase()] = true;
+                if (['arrowup','arrowdown','arrowleft','arrowright','w','a','s','d'].includes(e.key.toLowerCase())) {
                     e.preventDefault();
                 }
             });
-
-            document.addEventListener('keyup', (e) => {
-                const key = e.key.toLowerCase();
-                keys[key] = false;
-                if (e.key.startsWith('Arrow')) {
-                    keys[e.key.toLowerCase()] = false;
-                }
+            document.addEventListener('keyup', e => {
+                keys[e.key.toLowerCase()] = false;
             });
 
             function handleKeyboard() {
@@ -393,7 +295,8 @@
                 if (keys['d'] || keys['arrowright']) dx += 1;
                 if (keys['w'] || keys['arrowup']) dy -= 1;
                 if (keys['s'] || keys['arrowdown']) dy += 1;
-                if (dx !== 0 || dy !== 0) {
+
+                if (dx || dy) {
                     const len = Math.sqrt(dx*dx + dy*dy);
                     const targetSpeed = player.speed * 4;
                     player.vx = (dx / len) * targetSpeed;
@@ -401,7 +304,9 @@
                 }
             }
 
+            // ────────────────────────────────────────────────
             // Джойстик
+            // ────────────────────────────────────────────────
             let joystick = null;
             const joystickZone = document.getElementById('joystickZone');
 
@@ -414,9 +319,7 @@
                         position: { left: '50%', bottom: '50%' },
                         color: 'white',
                         size: 120,
-                        threshold: 0.1,
-                        lockY: false,
-                        lockX: false
+                        threshold: 0.1
                     });
 
                     joystick.on('move', (evt, data) => {
@@ -428,8 +331,7 @@
                     });
 
                     joystick.on('end', () => {
-                        player.vx = 0;
-                        player.vy = 0;
+                        player.vx = player.vy = 0;
                     });
                 }
             }
@@ -442,25 +344,20 @@
             }
 
             function checkOrientation() {
-                const isPortrait = window.innerWidth < window.innerHeight && window.innerWidth <= 768;
-                if (isPortrait) {
+                if (window.innerWidth < window.innerHeight && window.innerWidth <= 768) {
                     return false;
-                } else {
-                    document.body.style.display = 'flex';
-                    return true;
                 }
+                return true;
             }
 
             function init() {
                 resizeCanvas();
                 if (!checkOrientation()) return;
                 initJoystick();
-
                 window.addEventListener('resize', () => {
                     resizeCanvas();
-                    checkOrientation();
+                    if (checkOrientation()) initJoystick();
                 });
-
                 gameLoop();
                 setInterval(handleKeyboard, 16);
             }
@@ -468,13 +365,12 @@
             function gameLoop() {
                 ctx.clearRect(0, 0, canvasWidth, canvasHeight);
 
-                // Рассчитываем масштаб чтобы мир поместился на экране
                 const scale = Math.min(
                     canvasWidth / WORLD_PIXEL_WIDTH,
                     canvasHeight / WORLD_PIXEL_HEIGHT
-                ) * 0.95; // Немного уменьшаем для отступов
+                ) * 0.95;
 
-                const offsetX = (canvasWidth - WORLD_PIXEL_WIDTH * scale) / 2;
+                const offsetX = (canvasWidth  - WORLD_PIXEL_WIDTH  * scale) / 2;
                 const offsetY = (canvasHeight - WORLD_PIXEL_HEIGHT * scale) / 2;
 
                 ctx.save();
@@ -486,16 +382,15 @@
                 drawPlayer();
 
                 ctx.restore();
+
                 requestAnimationFrame(gameLoop);
             }
 
-            // Запускаем после загрузки DOM
             if (document.readyState === 'loading') {
                 document.addEventListener('DOMContentLoaded', init);
             } else {
                 init();
             }
-
         })();
     </script>
 </body>
