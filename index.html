@@ -190,15 +190,15 @@
             }
             // Генерация типа тайла
             function getTileType(x, y) {
-                const noise = Math.sin(x * 0.1) * Math.cos(y * 0.1);
+                const noise = Math.sin(x * 0.05) * Math.cos(y * 0.05);
                 if (noise > 0.3) return 'grass';
                 if (noise < -0.3) return 'sand';
                 return 'dirt';
             }
             const TILE_COLORS = {
-                grass: ['#4A7C59', '#5A8C69', '#3A6C49'],
-                sand: ['#C2B280', '#D2C290', '#B2A270'],
-                dirt: ['#8B7355', '#9B8555', '#7B6545']
+                grass: '#4A7C59',
+                sand: '#C2B280',
+                dirt: '#8B7355'
             };
             // Отрисовка фона (карты)
             function drawBackground() {
@@ -215,8 +215,7 @@
                     for (let x = startX; x < endX; x++) {
                         if (x < 0 || x >= WORLD_WIDTH) continue;
                         const type = getTileType(x, y);
-                        const colors = TILE_COLORS[type];
-                        ctx.fillStyle = colors[(x + y) % 3];
+                        ctx.fillStyle = TILE_COLORS[type];
                         ctx.fillRect((x * TILE_SIZE) - camera.x, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
                     }
                 }
