@@ -1,4 +1,4 @@
-<!DOCTYPE html> //
+<!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
@@ -82,9 +82,6 @@
             border-color: #FFD700;
             box-shadow: 0 0 20px rgba(255, 215, 0, 0.6);
         }
-        #runVideo {
-            display: none;
-        }
     </style>
 </head>
 <body>
@@ -92,11 +89,6 @@
     <div id="joystickZone">
         <div id="joystickIndicator"></div>
     </div>
-  
-    <!-- Видео для анимации бега -->
-    <video id="runVideo" loop muted playsinline preload="auto">
-        <source src="fotor-video_bg_remover-preview-20260216211337.webm" type="video/webm">
-    </video>
     <script>
         (function() {
             // Telegram Web App
@@ -111,8 +103,8 @@
             ctx.imageSmoothingEnabled = false;
             // ДИНАМИЧЕСКИЕ РАЗМЕРЫ (пересчитываются при resize)
             let TILE_SIZE = 64;
-            let PLAYER_WIDTH = 48;
-            let PLAYER_HEIGHT = 56;
+            let PLAYER_WIDTH = 96;
+            let PLAYER_HEIGHT = 112;
             let WORLD_WIDTH = 28;
             let WORLD_HEIGHT = 16;
             let WORLD_PIXEL_WIDTH = 0;
@@ -122,7 +114,6 @@
             // АССЕТЫ
             const idleImage = new Image();
             idleImage.src = 'baseun.png';
-            const runVideo = document.getElementById('runVideo');
             let player = {
                 x: 0,
                 y: 0,
@@ -136,6 +127,7 @@
             };
             // ФЛАГ ДЛЯ ДЖОЙСТИКА (фикс бага остановки)
             let joystickActive = false;
+            let keyActive = false;
             // ФОН
             function getTileType(x, y) {
                 const n = Math.sin(x * 0.25) * Math.cos(y * 0.22) + Math.sin(x * 0.18 + 3) * 0.4;
@@ -175,16 +167,11 @@
                 } else {
                     ctx.translate(player.x, player.y);
                 }
-                if (player.isMoving) {
-                    // Убрали проверку readyState — видео предзагружено, чтобы не было вспышки idle
-                    ctx.drawImage(runVideo, 0, 0, player.width, player.height);
+                if (idleImage.complete && idleImage.naturalHeight !== 0) {
+                    ctx.drawImage(idleImage, 0, 0, player.width, player.height);
                 } else {
-                    if (idleImage.complete && idleImage.naturalHeight !== 0) {
-                        ctx.drawImage(idleImage, 0, 0, player.width, player.height);
-                    } else {
-                        ctx.fillStyle = '#444';
-                        ctx.fillRect(0, 0, player.width, player.height);
-                    }
+                    ctx.fillStyle = '#444';
+                    ctx.fillRect(0, 0, player.width, player.height);
                 }
                 ctx.restore();
             }
@@ -193,41 +180,29 @@
                 player.y += player.vy;
                 player.x = Math.max(0, Math.min(WORLD_PIXEL_WIDTH - player.width, player.x));
                 player.y = Math.max(0, Math.min(WORLD_PIXEL_HEIGHT - player.height, player.y));
-
-                // ДАМПИНГ ТОЛЬКО ЕСЛИ ДЖОЙСТИК НЕ АКТИВЕН
-                if (!joystickActive) {
+                // ДАМПИНГ ТОЛЬКО ЕСЛИ НЕТ АКТИВНОГО ИНПУТА
+                if (!(joystickActive || keyActive)) {
                     player.vx *= 0.84;
                     player.vy *= 0.84;
                     if (Math.abs(player.vx) < 0.06) player.vx = 0;
                     if (Math.abs(player.vy) < 0.06) player.vy = 0;
                 }
-
-                const wasMoving = player.isMoving;
                 player.isMoving = Math.abs(player.vx) > 0.01 || Math.abs(player.vy) > 0.01; // Более чувствительный порог
                 if (player.vx !== 0) player.facing = player.vx > 0 ? 1 : -1;
-
-                // Видео: мгновенная остановка + сброс на старт (фикс "продолжается чуть времени")
-                if (player.isMoving) {
-                    if (runVideo.paused || runVideo.ended) {
-                        runVideo.currentTime = 0;
-                        runVideo.play().catch(() => {});
-                    }
-                } else if (wasMoving) {
-                    runVideo.pause();
-                    runVideo.currentTime = 0; // Сброс, чтобы анимация не "зависала"
-                }
             }
             // КЛАВИАТУРА
             const keys = {};
             window.addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
             window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
             function handleKeys() {
+                keyActive = false;
                 let dx = 0, dy = 0;
                 if (keys['a'] || keys['arrowleft']) dx--;
                 if (keys['d'] || keys['arrowright']) dx++;
                 if (keys['w'] || keys['arrowup']) dy--;
                 if (keys['s'] || keys['arrowdown']) dy++;
                 if (dx || dy) {
+                    keyActive = true;
                     const len = Math.hypot(dx, dy) || 1;
                     const spd = player.speed * 4.8;
                     player.vx = (dx / len) * spd;
@@ -256,7 +231,7 @@
                 });
                 joystick.on('move', (evt, data) => {
                     if (data.vector) {
-                        const spd = player.speed * 5.2;
+                        const spd = player.speed * 4.8;
                         player.vx = data.vector.x * spd;
                         player.vy = -data.vector.y * spd;
                     }
@@ -291,15 +266,8 @@
                 resize();
                 // Всегда создаём джойстик
                 createJoystick();
-                // Предзагрузка видео + запуск по тапу
-                const tryPlay = () => {
-                    runVideo.load(); // Принудительная предзагрузка
-                    runVideo.play().catch(() => {});
-                    document.removeEventListener('touchstart', tryPlay, true);
-                    document.removeEventListener('click', tryPlay, true);
-                };
-                document.addEventListener('touchstart', tryPlay, { once: true, passive: true });
-                document.addEventListener('click', tryPlay, { once: true });
+                // Предзагрузка изображения
+                idleImage.onload = () => {};
                 window.addEventListener('resize', () => {
                     resize();
                     if (isGoodOrientation()) {
@@ -314,9 +282,11 @@
                 // Полная очистка + чёрный фон
                 ctx.fillStyle = '#0f172a';
                 ctx.fillRect(0, 0, canvasWidth, canvasHeight);
-                // Масштабирование: ПОЛНОЕ ЗАПОЛНЕНИЕ ГОРИЗОНТАЛИ (на телефоне и ПК)
-                const scale = (canvasWidth / WORLD_PIXEL_WIDTH) * 0.98;
-                const ox = 0; // Полное выравнивание по ширине
+                // Масштабирование: ПОЛНОЕ ВМЕЩЕНИЕ В ЭКРАН
+                const scaleX = canvasWidth / WORLD_PIXEL_WIDTH;
+                const scaleY = canvasHeight / WORLD_PIXEL_HEIGHT;
+                const scale = Math.min(scaleX, scaleY);
+                const ox = (canvasWidth - WORLD_PIXEL_WIDTH * scale) / 2;
                 const oy = (canvasHeight - WORLD_PIXEL_HEIGHT * scale) / 2;
                 ctx.save();
                 ctx.translate(ox, oy);
