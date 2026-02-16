@@ -128,12 +128,14 @@
                 y: 0,
                 vx: 0,
                 vy: 0,
-                speed: 0.8,
+                speed: 1.8,
                 facing: 1,
                 width: PLAYER_WIDTH,
                 height: PLAYER_HEIGHT,
                 isMoving: false
             };
+            // ФЛАГ ДЛЯ ДЖОЙСТИКА (фикс бага остановки)
+            let joystickActive = false;
             // ФОН
             function getTileType(x, y) {
                 const n = Math.sin(x * 0.25) * Math.cos(y * 0.22) + Math.sin(x * 0.18 + 3) * 0.4;
@@ -200,10 +202,15 @@
                 player.y += player.vy;
                 player.x = Math.max(0, Math.min(WORLD_PIXEL_WIDTH - player.width, player.x));
                 player.y = Math.max(0, Math.min(WORLD_PIXEL_HEIGHT - player.height, player.y));
-                player.vx *= 0.84;
-                player.vy *= 0.84;
-                if (Math.abs(player.vx) < 0.06) player.vx = 0;
-                if (Math.abs(player.vy) < 0.06) player.vy = 0;
+
+                // ДАМПИНГ ТОЛЬКО ЕСЛИ ДЖОЙСТИК НЕ АКТИВЕН (фикс: персонаж больше не "застревает")
+                if (!joystickActive) {
+                    player.vx *= 0.84;
+                    player.vy *= 0.84;
+                    if (Math.abs(player.vx) < 0.06) player.vx = 0;
+                    if (Math.abs(player.vy) < 0.06) player.vy = 0;
+                }
+
                 const wasMoving = player.isMoving;
                 player.isMoving = Math.abs(player.vx) > 0.06 || Math.abs(player.vy) > 0.06;
                 if (player.vx !== 0) player.facing = player.vx > 0 ? 1 : -1;
@@ -249,6 +256,7 @@
                     fadeTime: 150
                 });
                 joystick.on('start', (evt, data) => {
+                    joystickActive = true; // ← фикс
                     indicator.classList.add('active');
                     indicator.style.left = `${data.position.x - 20}px`;
                     indicator.style.bottom = `${window.innerHeight - data.position.y - 20}px`; // bottom
@@ -261,6 +269,7 @@
                     }
                 });
                 joystick.on('end', () => {
+                    joystickActive = false; // ← фикс
                     indicator.classList.remove('active');
                     player.vx = player.vy = 0;
                 });
