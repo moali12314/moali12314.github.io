@@ -105,8 +105,8 @@
             let TILE_SIZE = 64;
             let PLAYER_WIDTH = 48;
             let PLAYER_HEIGHT = 56;
-            let WORLD_WIDTH = 2;
-            let WORLD_HEIGHT = 1;
+            let WORLD_WIDTH = 32;
+            let WORLD_HEIGHT = 48;
             let WORLD_PIXEL_WIDTH = 0;
             let WORLD_PIXEL_HEIGHT = 0;
             let canvasWidth = 0;
@@ -114,8 +114,6 @@
             // АССЕТЫ
             const idleImage = new Image();
             idleImage.src = 'baseun.png';
-            const mapImage = new Image();
-            mapImage.src = 'gates.png';
             let player = {
                 x: 0,
                 y: 0,
@@ -130,20 +128,45 @@
             // ФЛАГ ДЛЯ ДЖОЙСТИКА (фикс бага остановки)
             let joystickActive = false;
             let keyActive = false;
-            // ФОН
+            // ФОН (необычный дизайн: спиральный лабиринт с неоновыми цветами)
+            function getTileType(x, y) {
+                const centerX = WORLD_WIDTH / 2;
+                const centerY = WORLD_HEIGHT / 2;
+                const dx = x - centerX;
+                const dy = y - centerY;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                const angle = Math.atan2(dy, dx);
+                const spiralFactor = dist / 5 + angle * 2; // Фактор для спирали
+                const val = Math.sin(spiralFactor) * Math.cos(spiralFactor * 0.5);
+                if (val > 0.6) return 'neon_wall'; // Неоновые стены
+                if (val < -0.6) return 'void_space'; // Пустоты/тени
+                if (Math.abs(val) < 0.2) return 'energy_path'; // Энергетические пути
+                return 'crystal_floor'; // Кристальный пол
+            }
+            const COLORS = {
+                neon_wall: '#00FFFF', // Циан неон
+                void_space: '#1A0033', // Темно-фиолетовый космос
+                energy_path: '#FF00FF', // Магента энергия
+                crystal_floor: '#9932CC' // Фиолетовый кристалл
+            };
             function drawBackground() {
-                // Полный чёрный фон (фикс белого)
-                ctx.fillStyle = '#0f172a';
-                ctx.fillRect(0, 0, WORLD_PIXEL_WIDTH, WORLD_PIXEL_HEIGHT);
+                // Базовый градиент для атмосферы
                 const g = ctx.createLinearGradient(0, 0, 0, WORLD_PIXEL_HEIGHT);
-                g.addColorStop(0, '#0f172a');
-                g.addColorStop(1, '#1e293b');
+                g.addColorStop(0, '#0A001A');
+                g.addColorStop(1, '#330066');
                 ctx.fillStyle = g;
                 ctx.fillRect(0, 0, WORLD_PIXEL_WIDTH, WORLD_PIXEL_HEIGHT);
-                if (mapImage.complete && mapImage.naturalHeight !== 0) {
-                    const pattern = ctx.createPattern(mapImage, 'repeat');
-                    ctx.fillStyle = pattern;
-                    ctx.fillRect(0, 0, WORLD_PIXEL_WIDTH, WORLD_PIXEL_HEIGHT);
+                // Тайлы спирали
+                for (let y = 0; y < WORLD_HEIGHT; y++) {
+                    for (let x = 0; x < WORLD_WIDTH; x++) {
+                        ctx.fillStyle = COLORS[getTileType(x, y)];
+                        ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+                        // Добавляем "необычность": случайные вспышки или узоры на тайлах
+                        if (Math.random() < 0.1) {
+                            ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+                            ctx.fillRect(x * TILE_SIZE + TILE_SIZE / 4, y * TILE_SIZE + TILE_SIZE / 4, TILE_SIZE / 2, TILE_SIZE / 2);
+                        }
+                    }
                 }
             }
             // ИГРОК
@@ -252,7 +275,6 @@
                 createJoystick();
                 // Предзагрузка изображения
                 idleImage.onload = () => {};
-                mapImage.onload = () => {};
                 window.addEventListener('resize', () => {
                     resize();
                     if (isGoodOrientation()) {
