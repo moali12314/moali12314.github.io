@@ -94,7 +94,7 @@
     </div>
   
     <!-- Видео для анимации бега -->
-    <video id="runVideo" loop muted playsinline>
+    <video id="runVideo" loop muted playsinline preload="auto">
         <source src="fotor-video_bg_remover-preview-20260216211337.webm" type="video/webm">
     </video>
     <script>
@@ -176,17 +176,8 @@
                     ctx.translate(player.x, player.y);
                 }
                 if (player.isMoving) {
-                    if (runVideo.readyState >= 2) {
-                        ctx.drawImage(runVideo, 0, 0, player.width, player.height);
-                    } else {
-                        // Fallback на idle (чтобы убрать красный квадрат на старте)
-                        if (idleImage.complete && idleImage.naturalHeight !== 0) {
-                            ctx.drawImage(idleImage, 0, 0, player.width, player.height);
-                        } else {
-                            ctx.fillStyle = '#444';
-                            ctx.fillRect(0, 0, player.width, player.height);
-                        }
-                    }
+                    // Убрали проверку readyState — видео предзагружено, чтобы не было вспышки idle
+                    ctx.drawImage(runVideo, 0, 0, player.width, player.height);
                 } else {
                     if (idleImage.complete && idleImage.naturalHeight !== 0) {
                         ctx.drawImage(idleImage, 0, 0, player.width, player.height);
@@ -203,7 +194,7 @@
                 player.x = Math.max(0, Math.min(WORLD_PIXEL_WIDTH - player.width, player.x));
                 player.y = Math.max(0, Math.min(WORLD_PIXEL_HEIGHT - player.height, player.y));
 
-                // ДАМПИНГ ТОЛЬКО ЕСЛИ ДЖОЙСТИК НЕ АКТИВЕН (фикс: персонаж больше не "застревает")
+                // ДАМПИНГ ТОЛЬКО ЕСЛИ ДЖОЙСТИК НЕ АКТИВЕН
                 if (!joystickActive) {
                     player.vx *= 0.84;
                     player.vy *= 0.84;
@@ -212,16 +203,18 @@
                 }
 
                 const wasMoving = player.isMoving;
-                player.isMoving = Math.abs(player.vx) > 0.06 || Math.abs(player.vy) > 0.06;
+                player.isMoving = Math.abs(player.vx) > 0.01 || Math.abs(player.vy) > 0.01; // Более чувствительный порог
                 if (player.vx !== 0) player.facing = player.vx > 0 ? 1 : -1;
-                // Видео
+
+                // Видео: мгновенная остановка + сброс на старт (фикс "продолжается чуть времени")
                 if (player.isMoving) {
                     if (runVideo.paused || runVideo.ended) {
                         runVideo.currentTime = 0;
                         runVideo.play().catch(() => {});
                     }
-                } else if (!runVideo.paused) {
+                } else if (wasMoving) {
                     runVideo.pause();
+                    runVideo.currentTime = 0; // Сброс, чтобы анимация не "зависала"
                 }
             }
             // КЛАВИАТУРА
@@ -256,10 +249,10 @@
                     fadeTime: 150
                 });
                 joystick.on('start', (evt, data) => {
-                    joystickActive = true; // ← фикс
+                    joystickActive = true;
                     indicator.classList.add('active');
                     indicator.style.left = `${data.position.x - 20}px`;
-                    indicator.style.bottom = `${window.innerHeight - data.position.y - 20}px`; // bottom
+                    indicator.style.bottom = `${window.innerHeight - data.position.y - 20}px`;
                 });
                 joystick.on('move', (evt, data) => {
                     if (data.vector) {
@@ -269,7 +262,7 @@
                     }
                 });
                 joystick.on('end', () => {
-                    joystickActive = false; // ← фикс
+                    joystickActive = false;
                     indicator.classList.remove('active');
                     player.vx = player.vy = 0;
                 });
@@ -296,10 +289,11 @@
             }
             function init() {
                 resize();
-                // Всегда создаём джойстик (даже в portrait — на всякий)
+                // Всегда создаём джойстик
                 createJoystick();
-                // Запуск видео по первому тапу (критично для iOS/Android)
+                // Предзагрузка видео + запуск по тапу
                 const tryPlay = () => {
+                    runVideo.load(); // Принудительная предзагрузка
                     runVideo.play().catch(() => {});
                     document.removeEventListener('touchstart', tryPlay, true);
                     document.removeEventListener('click', tryPlay, true);
@@ -317,15 +311,12 @@
                 setInterval(handleKeys, 16);
             }
             function gameLoop() {
-                // Полная очистка + чёрный фон (гарантия от белого экрана)
+                // Полная очистка + чёрный фон
                 ctx.fillStyle = '#0f172a';
                 ctx.fillRect(0, 0, canvasWidth, canvasHeight);
-                // Масштабирование мира по центру
-                const scale = Math.max(
-                    Math.min(canvasWidth / WORLD_PIXEL_WIDTH, canvasHeight / WORLD_PIXEL_HEIGHT),
-                    0.75
-                ) * 0.98;
-                const ox = (canvasWidth - WORLD_PIXEL_WIDTH * scale) / 2;
+                // Масштабирование: ПОЛНОЕ ЗАПОЛНЕНИЕ ГОРИЗОНТАЛИ (на телефоне и ПК)
+                const scale = (canvasWidth / WORLD_PIXEL_WIDTH) * 0.98;
+                const ox = 0; // Полное выравнивание по ширине
                 const oy = (canvasHeight - WORLD_PIXEL_HEIGHT * scale) / 2;
                 ctx.save();
                 ctx.translate(ox, oy);
