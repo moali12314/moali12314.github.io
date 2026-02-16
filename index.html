@@ -1,258 +1,382 @@
-<script>
-(function() {
-    // Telegram Web App
-    if (window.Telegram?.WebApp) {
-        Telegram.WebApp.ready();
-        Telegram.WebApp.expand();
-        Telegram.WebApp.setHeaderColor('#000000');
-        Telegram.WebApp.setBackgroundColor('#000000');
-    }
-
-    const canvas = document.getElementById('gameCanvas');
-    const ctx = canvas.getContext('2d');
-    ctx.imageSmoothingEnabled = false;
-
-    // РАЗМЕРЫ
-    const TILE_SIZE = window.innerWidth < 768 ? 48 : 64;
-    const PLAYER_WIDTH = 48;
-    const PLAYER_HEIGHT = 56;
-    const WORLD_WIDTH  = window.innerWidth < 768 ? 22 : 28;
-    const WORLD_HEIGHT = window.innerWidth < 768 ? 13 : 16;
-    const WORLD_PIXEL_WIDTH  = WORLD_WIDTH  * TILE_SIZE;
-    const WORLD_PIXEL_HEIGHT = WORLD_HEIGHT * TILE_SIZE;
-
-    let canvasWidth, canvasHeight;
-
-    // ─── АССЕТЫ ────────────────────────────────────────
-    const idleImage = new Image();
-    idleImage.src = 'baserun.png';
-
-    const runVideo = document.getElementById('runVideo');
-
-    let player = {
-        x: WORLD_PIXEL_WIDTH / 2 - PLAYER_WIDTH / 2,
-        y: WORLD_PIXEL_HEIGHT / 2 - PLAYER_HEIGHT / 2,
-        vx: 0,
-        vy: 0,
-        speed: 1.8,
-        facing: 1,
-        width: PLAYER_WIDTH,
-        height: PLAYER_HEIGHT,
-        isMoving: false
-    };
-
-    // ─── ФОН ───────────────────────────────────────────
-    function getTileType(x, y) {
-        const n = Math.sin(x*0.25) * Math.cos(y*0.22) + Math.sin(x*0.18 + 3)*0.4;
-        if (n > 0.35) return 'grass';
-        if (n < -0.25) return 'water';
-        if (Math.abs(n) < 0.08) return 'path';
-        return 'dirt';
-    }
-
-    const COLORS = {
-        grass: '#3a6c4a',
-        dirt:  '#7a6348',
-        water: '#3a78c2',
-        path:  '#b89a70'
-    };
-
-    function drawBackground() {
-        const g = ctx.createLinearGradient(0,0,0,WORLD_PIXEL_HEIGHT);
-        g.addColorStop(0, '#0f172a');
-        g.addColorStop(1, '#1e293b');
-        ctx.fillStyle = g;
-        ctx.fillRect(0,0,WORLD_PIXEL_WIDTH,WORLD_PIXEL_HEIGHT);
-
-        for (let y = 0; y < WORLD_HEIGHT; y++) {
-            for (let x = 0; x < WORLD_WIDTH; x++) {
-                ctx.fillStyle = COLORS[getTileType(x, y)];
-                ctx.fillRect(x*TILE_SIZE, y*TILE_SIZE, TILE_SIZE, TILE_SIZE);
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Soul Knight - РЫЦАРЬ В ТРУСАХ</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/nipplejs@0.9.0/dist/nipplejs.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            position: fixed;
+            background: #000;
+        }
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            touch-action: pan-y pinch-zoom;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            image-rendering: crisp-edges;
+            image-rendering: pixelated;
+            background: #0f172a; /* Фикс белого экрана */
+        }
+        @media (max-width: 768px) and (orientation: portrait) {
+            body::before {
+                content: "🔄 ПОВЕРНИТЕ ЭКРАН ГОРИЗОНТАЛЬНО";
+                position: fixed;
+                inset: 0;
+                background: #000;
+                color: #fff;
+                font-size: 28px;
+                font-weight: bold;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                text-align: center;
+                z-index: 9999;
+                font-family: Arial, sans-serif;
+                letter-spacing: 2px;
+            }
+            canvas, #joystickZone {
+                display: none !important;
             }
         }
-    }
-
-    // ─── ИГРОК ─────────────────────────────────────────
-    function drawPlayer() {
-        ctx.save();
-
-        if (player.facing === -1) {
-            ctx.translate(player.x + player.width, player.y);
-            ctx.scale(-1, 1);
-        } else {
-            ctx.translate(player.x, player.y);
+        /* НЕВИДИМАЯ ЗОНА ДЖОЙСТИКА */
+        #joystickZone {
+            position: fixed;
+            inset: 0;
+            z-index: 100;
+            background: transparent;
+            touch-action: none;
+            pointer-events: auto;
         }
+        #joystickIndicator {
+            position: fixed;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.15);
+            border: 2px solid rgba(255, 255, 255, 0.4);
+            transition: all 0.2s;
+            z-index: 101;
+            display: none;
+        }
+        #joystickIndicator.active {
+            display: block;
+            background: rgba(255, 215, 0, 0.4);
+            border-color: #FFD700;
+            box-shadow: 0 0 20px rgba(255, 215, 0, 0.6);
+        }
+        #runVideo {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    <div id="joystickZone">
+        <div id="joystickIndicator"></div>
+    </div>
+   
+    <!-- Видео для анимации бега -->
+    <video id="runVideo" loop muted playsinline>
+        <source src="run.mp4" type="video/mp4">
+    </video>
 
-        if (player.isMoving) {
-            if (runVideo.readyState >= 2 && !runVideo.paused) {
-                ctx.drawImage(runVideo, 0, 0, player.width, player.height);
+    <script>
+        (function() {
+            // Telegram Web App
+            if (window.Telegram?.WebApp) {
+                Telegram.WebApp.ready();
+                Telegram.WebApp.expand();
+                Telegram.WebApp.setHeaderColor('#000000');
+                Telegram.WebApp.setBackgroundColor('#000000');
+            }
+
+            const canvas = document.getElementById('gameCanvas');
+            const ctx = canvas.getContext('2d', { alpha: false }); // Оптимизация
+            ctx.imageSmoothingEnabled = false;
+
+            // ДИНАМИЧЕСКИЕ РАЗМЕРЫ (пересчитываются при resize)
+            let TILE_SIZE = 64;
+            let PLAYER_WIDTH = 48;
+            let PLAYER_HEIGHT = 56;
+            let WORLD_WIDTH = 28;
+            let WORLD_HEIGHT = 16;
+            let WORLD_PIXEL_WIDTH = 0;
+            let WORLD_PIXEL_HEIGHT = 0;
+
+            let canvasWidth = 0;
+            let canvasHeight = 0;
+
+            // АССЕТЫ
+            const idleImage = new Image();
+            idleImage.src = 'baserun.png';
+
+            const runVideo = document.getElementById('runVideo');
+
+            let player = {
+                x: 0,
+                y: 0,
+                vx: 0,
+                vy: 0,
+                speed: 1.8,
+                facing: 1,
+                width: PLAYER_WIDTH,
+                height: PLAYER_HEIGHT,
+                isMoving: false
+            };
+
+            // ФОН
+            function getTileType(x, y) {
+                const n = Math.sin(x * 0.25) * Math.cos(y * 0.22) + Math.sin(x * 0.18 + 3) * 0.4;
+                if (n > 0.35) return 'grass';
+                if (n < -0.25) return 'water';
+                if (Math.abs(n) < 0.08) return 'path';
+                return 'dirt';
+            }
+
+            const COLORS = {
+                grass: '#3a6c4a',
+                dirt: '#7a6348',
+                water: '#3a78c2',
+                path: '#b89a70'
+            };
+
+            function drawBackground() {
+                // Полный чёрный фон (фикс белого)
+                ctx.fillStyle = '#0f172a';
+                ctx.fillRect(0, 0, WORLD_PIXEL_WIDTH, WORLD_PIXEL_HEIGHT);
+
+                const g = ctx.createLinearGradient(0, 0, 0, WORLD_PIXEL_HEIGHT);
+                g.addColorStop(0, '#0f172a');
+                g.addColorStop(1, '#1e293b');
+                ctx.fillStyle = g;
+                ctx.fillRect(0, 0, WORLD_PIXEL_WIDTH, WORLD_PIXEL_HEIGHT);
+
+                for (let y = 0; y < WORLD_HEIGHT; y++) {
+                    for (let x = 0; x < WORLD_WIDTH; x++) {
+                        ctx.fillStyle = COLORS[getTileType(x, y)];
+                        ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+                    }
+                }
+            }
+
+            // ИГРОК
+            function drawPlayer() {
+                ctx.save();
+
+                if (player.facing === -1) {
+                    ctx.translate(player.x + player.width, player.y);
+                    ctx.scale(-1, 1);
+                } else {
+                    ctx.translate(player.x, player.y);
+                }
+
+                if (player.isMoving) {
+                    if (runVideo.readyState >= 2) {
+                        ctx.drawImage(runVideo, 0, 0, player.width, player.height);
+                    } else {
+                        ctx.fillStyle = '#e53e3e';
+                        ctx.fillRect(0, 0, player.width, player.height);
+                    }
+                } else {
+                    if (idleImage.complete && idleImage.naturalHeight !== 0) {
+                        ctx.drawImage(idleImage, 0, 0, player.width, player.height);
+                    } else {
+                        ctx.fillStyle = '#444';
+                        ctx.fillRect(0, 0, player.width, player.height);
+                    }
+                }
+
+                ctx.restore();
+            }
+
+            function update() {
+                player.x += player.vx;
+                player.y += player.vy;
+
+                player.x = Math.max(0, Math.min(WORLD_PIXEL_WIDTH - player.width, player.x));
+                player.y = Math.max(0, Math.min(WORLD_PIXEL_HEIGHT - player.height, player.y));
+
+                player.vx *= 0.84;
+                player.vy *= 0.84;
+                if (Math.abs(player.vx) < 0.06) player.vx = 0;
+                if (Math.abs(player.vy) < 0.06) player.vy = 0;
+
+                const wasMoving = player.isMoving;
+                player.isMoving = Math.abs(player.vx) > 0.06 || Math.abs(player.vy) > 0.06;
+
+                if (player.vx !== 0) player.facing = player.vx > 0 ? 1 : -1;
+
+                // Видео
+                if (player.isMoving) {
+                    if (runVideo.paused || runVideo.ended) {
+                        runVideo.currentTime = 0;
+                        runVideo.play().catch(() => {});
+                    }
+                } else if (!runVideo.paused) {
+                    runVideo.pause();
+                }
+            }
+
+            // КЛАВИАТУРА
+            const keys = {};
+            window.addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
+            window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+
+            function handleKeys() {
+                let dx = 0, dy = 0;
+                if (keys['a'] || keys['arrowleft']) dx--;
+                if (keys['d'] || keys['arrowright']) dx++;
+                if (keys['w'] || keys['arrowup']) dy--;
+                if (keys['s'] || keys['arrowdown']) dy++;
+
+                if (dx || dy) {
+                    const len = Math.hypot(dx, dy) || 1;
+                    const spd = player.speed * 4.8;
+                    player.vx = (dx / len) * spd;
+                    player.vy = (dy / len) * spd;
+                }
+            }
+
+            // ДЖОЙСТИК (dynamic — появляется где тап)
+            let joystick = null;
+            const zone = document.getElementById('joystickZone');
+            const indicator = document.getElementById('joystickIndicator');
+
+            function createJoystick() {
+                if (joystick) joystick.destroy();
+
+                joystick = nipplejs.create({
+                    zone: zone,
+                    mode: 'dynamic',
+                    color: 'rgba(255,255,255,0.35)',
+                    size: 180,
+                    threshold: 0.1,
+                    fadeTime: 150
+                });
+
+                joystick.on('start', (evt, data) => {
+                    indicator.classList.add('active');
+                    indicator.style.left = `${data.position.x - 20}px`;
+                    indicator.style.bottom = `${window.innerHeight - data.position.y - 20}px`; // bottom
+                });
+
+                joystick.on('move', (evt, data) => {
+                    if (data.vector) {
+                        const spd = player.speed * 5.2;
+                        player.vx = data.vector.x * spd;
+                        player.vy = -data.vector.y * spd;
+                    }
+                });
+
+                joystick.on('end', () => {
+                    indicator.classList.remove('active');
+                    player.vx = player.vy = 0;
+                });
+            }
+
+            // РЕСАЙЗ + ПЕРЕСЧЁТ МИРА
+            function resize() {
+                canvasWidth = window.innerWidth;
+                canvasHeight = window.innerHeight;
+                canvas.width = canvasWidth;
+                canvas.height = canvasHeight;
+
+                // Пересчитываем под текущий экран
+                const isMobile = canvasWidth < 768;
+                TILE_SIZE = isMobile ? 48 : 64;
+                WORLD_WIDTH = isMobile ? 22 : 28;
+                WORLD_HEIGHT = isMobile ? 13 : 16;
+                WORLD_PIXEL_WIDTH = WORLD_WIDTH * TILE_SIZE;
+                WORLD_PIXEL_HEIGHT = WORLD_HEIGHT * TILE_SIZE;
+
+                // Центрируем игрока при ресайзе
+                player.x = Math.max(0, Math.min(WORLD_PIXEL_WIDTH - player.width, WORLD_PIXEL_WIDTH / 2 - player.width / 2));
+                player.y = Math.max(0, Math.min(WORLD_PIXEL_HEIGHT - player.height, WORLD_PIXEL_HEIGHT / 2 - player.height / 2));
+            }
+
+            function isGoodOrientation() {
+                return window.innerWidth >= window.innerHeight || window.innerWidth > 768;
+            }
+
+            function init() {
+                resize();
+
+                // Всегда создаём джойстик (даже в portrait — на всякий)
+                createJoystick();
+
+                // Запуск видео по первому тапу (критично для iOS/Android)
+                const tryPlay = () => {
+                    runVideo.play().catch(() => {});
+                    document.removeEventListener('touchstart', tryPlay, true);
+                    document.removeEventListener('click', tryPlay, true);
+                };
+                document.addEventListener('touchstart', tryPlay, { once: true, passive: true });
+                document.addEventListener('click', tryPlay, { once: true });
+
+                window.addEventListener('resize', () => {
+                    resize();
+                    if (isGoodOrientation()) {
+                        if (!joystick) createJoystick();
+                    }
+                });
+
+                // Запускаем луп
+                requestAnimationFrame(gameLoop);
+                setInterval(handleKeys, 16);
+            }
+
+            function gameLoop() {
+                // Полная очистка + чёрный фон (гарантия от белого экрана)
+                ctx.fillStyle = '#0f172a';
+                ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+                // Масштабирование мира по центру
+                const scale = Math.max(
+                    Math.min(canvasWidth / WORLD_PIXEL_WIDTH, canvasHeight / WORLD_PIXEL_HEIGHT),
+                    0.75
+                ) * 0.98;
+
+                const ox = (canvasWidth - WORLD_PIXEL_WIDTH * scale) / 2;
+                const oy = (canvasHeight - WORLD_PIXEL_HEIGHT * scale) / 2;
+
+                ctx.save();
+                ctx.translate(ox, oy);
+                ctx.scale(scale, scale);
+
+                drawBackground();
+                update();
+                drawPlayer();
+
+                ctx.restore();
+
+                requestAnimationFrame(gameLoop);
+            }
+
+            // Старт
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', init);
             } else {
-                // fallback — красный квадрат или можно нарисовать кадр из baserun.png
-                ctx.fillStyle = '#e53e3e';
-                ctx.fillRect(0, 0, player.width, player.height);
+                init();
             }
-        } else {
-            if (idleImage.complete && idleImage.naturalHeight !== 0) {
-                ctx.drawImage(idleImage, 0, 0, player.width, player.height);
-            } else {
-                ctx.fillStyle = '#444';
-                ctx.fillRect(0, 0, player.width, player.height);
-            }
-        }
-
-        ctx.restore();
-    }
-
-    function update() {
-        player.x += player.vx;
-        player.y += player.vy;
-
-        player.x = Math.max(0, Math.min(WORLD_PIXEL_WIDTH  - player.width,  player.x));
-        player.y = Math.max(0, Math.min(WORLD_PIXEL_HEIGHT - player.height, player.y));
-
-        player.vx *= 0.84;
-        player.vy *= 0.84;
-        if (Math.abs(player.vx) < 0.06) player.vx = 0;
-        if (Math.abs(player.vy) < 0.06) player.vy = 0;
-
-        const wasMoving = player.isMoving;
-        player.isMoving = Math.abs(player.vx) > 0.06 || Math.abs(player.vy) > 0.06;
-
-        if (player.vx !== 0) player.facing = player.vx > 0 ? 1 : -1;
-
-        // Управление видео
-        if (player.isMoving) {
-            if (runVideo.paused || runVideo.ended) {
-                runVideo.currentTime = 0;
-                runVideo.play().catch(() => {});
-            }
-        } else if (!player.isMoving && !runVideo.paused) {
-            runVideo.pause();
-        }
-    }
-
-    // ─── КЛАВИАТУРА (для теста на ПК) ──────────────────
-    const keys = {};
-    window.addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
-    window.addEventListener('keyup',   e => keys[e.key.toLowerCase()] = false);
-
-    function handleKeys() {
-        let dx = 0, dy = 0;
-        if (keys['a'] || keys['arrowleft'])  dx--;
-        if (keys['d'] || keys['arrowright']) dx++;
-        if (keys['w'] || keys['arrowup'])    dy--;
-        if (keys['s'] || keys['arrowdown'])  dy++;
-
-        if (dx || dy) {
-            const len = Math.hypot(dx, dy) || 1;
-            const spd = player.speed * 4.8;
-            player.vx = (dx / len) * spd;
-            player.vy = (dy / len) * spd;
-        }
-    }
-
-    // ─── ДЖОЙСТИК (появляется там, где коснулся) ───────
-    let joystick = null;
-    const zone = document.getElementById('joystickZone');
-    const indicator = document.getElementById('joystickIndicator');
-
-    function createJoystick() {
-        if (joystick) joystick.destroy();
-
-        joystick = nipplejs.create({
-            zone: zone,
-            mode: 'dynamic',           // ← главное изменение
-            color: 'rgba(255,255,255,0.35)',
-            size: 180,
-            threshold: 0.1,
-            fadeTime: 150,
-            multitouch: false
-        });
-
-        joystick.on('start', (evt, data) => {
-            indicator.classList.add('active');
-            indicator.style.left = (data.position.x - 20) + 'px';
-            indicator.style.bottom = (data.position.y - 20) + 'px';
-        });
-
-        joystick.on('move', (evt, data) => {
-            if (data.vector) {
-                const spd = player.speed * 5.2;
-                player.vx = data.vector.x * spd;
-                player.vy = -data.vector.y * spd;
-            }
-        });
-
-        joystick.on('end', () => {
-            indicator.classList.remove('active');
-            player.vx = player.vy = 0;
-        });
-    }
-
-    // ─── ИНИЦИАЛИЗАЦИЯ ─────────────────────────────────
-    function resize() {
-        canvasWidth = window.innerWidth;
-        canvasHeight = window.innerHeight;
-        canvas.width = canvasWidth;
-        canvas.height = canvasHeight;
-    }
-
-    function isGoodOrientation() {
-        return window.innerWidth >= window.innerHeight || window.innerWidth > 768;
-    }
-
-    function init() {
-        resize();
-        if (!isGoodOrientation()) return;
-
-        createJoystick();
-
-        // Очень важно для мобильных — пытаемся запустить видео после любого касания
-        function tryPlayVideo() {
-            runVideo.play().catch(() => {});
-            document.removeEventListener('touchstart', tryPlayVideo, true);
-            document.removeEventListener('click',      tryPlayVideo, true);
-        }
-        document.addEventListener('touchstart', tryPlayVideo, {once: true, passive: true});
-        document.addEventListener('click',      tryPlayVideo, {once: true});
-
-        window.addEventListener('resize', () => {
-            resize();
-            if (isGoodOrientation() && !joystick) createJoystick();
-        });
-
-        requestAnimationFrame(gameLoop);
-        setInterval(handleKeys, 16);
-    }
-
-    function gameLoop() {
-        ctx.clearRect(0, 0, canvasWidth, canvasHeight);
-
-        const scale = Math.max(
-            Math.min(canvasWidth / WORLD_PIXEL_WIDTH, canvasHeight / WORLD_PIXEL_HEIGHT),
-            0.75
-        ) * 0.98;
-
-        const ox = (canvasWidth  - WORLD_PIXEL_WIDTH  * scale) / 2;
-        const oy = (canvasHeight - WORLD_PIXEL_HEIGHT * scale) / 2;
-
-        ctx.save();
-        ctx.translate(ox, oy);
-        ctx.scale(scale, scale);
-
-        drawBackground();
-        update();
-        drawPlayer();
-
-        ctx.restore();
-
-        requestAnimationFrame(gameLoop);
-    }
-
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', init);
-    } else {
-        init();
-    }
-})();
-</script>
+        })();
+    </script>
+</body>
+</html>
