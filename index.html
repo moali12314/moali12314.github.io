@@ -103,10 +103,10 @@
             ctx.imageSmoothingEnabled = false;
             // ДИНАМИЧЕСКИЕ РАЗМЕРЫ (пересчитываются при resize)
             let TILE_SIZE = 64;
-            let PLAYER_WIDTH = 96;
-            let PLAYER_HEIGHT = 112;
-            let WORLD_WIDTH = 28;
-            let WORLD_HEIGHT = 16;
+            let PLAYER_WIDTH = 48;
+            let PLAYER_HEIGHT = 56;
+            let WORLD_WIDTH = 32;
+            let WORLD_HEIGHT = 48;
             let WORLD_PIXEL_WIDTH = 0;
             let WORLD_PIXEL_HEIGHT = 0;
             let canvasWidth = 0;
@@ -114,6 +114,8 @@
             // АССЕТЫ
             const idleImage = new Image();
             idleImage.src = 'baseun.png';
+            const mapImage = new Image();
+            mapImage.src = 'gates.png';
             let player = {
                 x: 0,
                 y: 0,
@@ -129,19 +131,6 @@
             let joystickActive = false;
             let keyActive = false;
             // ФОН
-            function getTileType(x, y) {
-                const n = Math.sin(x * 0.25) * Math.cos(y * 0.22) + Math.sin(x * 0.18 + 3) * 0.4;
-                if (n > 0.35) return 'grass';
-                if (n < -0.25) return 'water';
-                if (Math.abs(n) < 0.08) return 'path';
-                return 'dirt';
-            }
-            const COLORS = {
-                grass: '#3a6c4a',
-                dirt: '#7a6348',
-                water: '#3a78c2',
-                path: '#b89a70'
-            };
             function drawBackground() {
                 // Полный чёрный фон (фикс белого)
                 ctx.fillStyle = '#0f172a';
@@ -151,11 +140,10 @@
                 g.addColorStop(1, '#1e293b');
                 ctx.fillStyle = g;
                 ctx.fillRect(0, 0, WORLD_PIXEL_WIDTH, WORLD_PIXEL_HEIGHT);
-                for (let y = 0; y < WORLD_HEIGHT; y++) {
-                    for (let x = 0; x < WORLD_WIDTH; x++) {
-                        ctx.fillStyle = COLORS[getTileType(x, y)];
-                        ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
-                    }
+                if (mapImage.complete && mapImage.naturalHeight !== 0) {
+                    const pattern = ctx.createPattern(mapImage, 'repeat');
+                    ctx.fillStyle = pattern;
+                    ctx.fillRect(0, 0, WORLD_PIXEL_WIDTH, WORLD_PIXEL_HEIGHT);
                 }
             }
             // ИГРОК
@@ -249,10 +237,6 @@
                 canvas.width = canvasWidth;
                 canvas.height = canvasHeight;
                 // Пересчитываем под текущий экран
-                const isMobile = canvasWidth < 768;
-                TILE_SIZE = isMobile ? 48 : 64;
-                WORLD_WIDTH = isMobile ? 22 : 28;
-                WORLD_HEIGHT = isMobile ? 13 : 16;
                 WORLD_PIXEL_WIDTH = WORLD_WIDTH * TILE_SIZE;
                 WORLD_PIXEL_HEIGHT = WORLD_HEIGHT * TILE_SIZE;
                 // Центрируем игрока при ресайзе
@@ -268,6 +252,7 @@
                 createJoystick();
                 // Предзагрузка изображения
                 idleImage.onload = () => {};
+                mapImage.onload = () => {};
                 window.addEventListener('resize', () => {
                     resize();
                     if (isGoodOrientation()) {
