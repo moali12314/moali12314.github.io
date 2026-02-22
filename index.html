@@ -44,10 +44,11 @@
             tg = window.Telegram.WebApp;
             tg.ready();
             tg.expand(); // Расширяем по высоте (важно для старых версий)
-            // Устанавливаем цвет header в черный для слияния с фоном
-            tg.setHeaderColor('#000000');
+            tg.disableClosingConfirmation(); // Отключаем подтверждение закрытия
+            // Устанавливаем цвет header в цвет фона для слияния/невидимости
+            tg.setHeaderColor('bg_color'); // Используем 'bg_color' для соответствия фону, делая header невидимым
             tg.setBackgroundColor('#000000');
-            tg.setBottomBarColor('#000000'); // Добавили для нижней плашки
+            tg.setBottomBarColor('bg_color'); // Делаем нижнюю плашку невидимой, сливая с фоном
             // Отключаем вертикальные свайпы (чтобы не тянуть вниз и не показывать header)
             if (tg.disableVerticalSwipes) {
                 tg.disableVerticalSwipes();
