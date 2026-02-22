@@ -51,6 +51,8 @@
             if (tg.disableVerticalSwipes) {
                 tg.disableVerticalSwipes();
             }
+            // Пытаемся fullscreen сразу
+            requestFullscreenOnInteraction();
             // Слушаем события fullscreen
             tg.onEvent('fullscreenChanged', () => {
                 if (tg.isFullscreen) {
@@ -58,9 +60,7 @@
                 } else {
                     console.log("Exited fullscreen mode");
                     // Повторно запросить, если вышел
-                    if (!fullscreenRequested) {
-                        tg.requestFullscreen().catch(() => {});
-                    }
+                    requestFullscreenOnInteraction();
                 }
             });
             tg.onEvent('fullscreenFailed', (error) => {
@@ -121,7 +121,7 @@
                     let originalMapWidth = mapImg.width;
                     let originalMapHeight = mapImg.height;
                     if (isMobile) {
-                        const scale = Math.min(SCREEN_WIDTH / originalMapWidth, SCREEN_HEIGHT / originalMapHeight);
+                        const scale = Math.min(SCREEN_WIDTH / originalMapWidth, SCREEN_HEIGHT / originalMapHeight) * 0.8; // Уменьшили масштаб до 80% для мобильных
                         MAP_WIDTH = originalMapWidth * scale;
                         MAP_HEIGHT = originalMapHeight * scale;
                     } else {
@@ -175,7 +175,10 @@
             fullscreenRequested = true;
             if (isTelegram && tg.requestFullscreen) {
                 tg.requestFullscreen()
-                    .then(() => console.log("Fullscreen enabled via Telegram API"))
+                    .then(() => {
+                        console.log("Fullscreen enabled via Telegram API");
+                        tg.expand(); // Повторно expand после fullscreen
+                    })
                     .catch(err => {
                         console.log("Telegram fullscreen failed:", err);
                         if (document.documentElement.requestFullscreen) {
