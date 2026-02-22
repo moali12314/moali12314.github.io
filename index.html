@@ -6,7 +6,7 @@
     <title>Soul Knight Base</title>
     <style>
         body { margin: 0; overflow: hidden; background: black; }
-        canvas { display: none; width: 100%; height: 100%; }
+        canvas { display: none; width: 100%; height: 100%; touch-action: none; }
         #orientationMessage {
             display: none;
             flex-direction: column;
@@ -42,68 +42,64 @@
             isTelegram = true;
             tg = window.Telegram.WebApp;
             tg.ready();
-            tg.expand(); // Расширить на полный экран
-            // Установка цвета заголовка в соответствии с темой, чтобы слить с фоном
-            // Полностью скрыть заголовок невозможно, но можно сделать его менее заметным
-            tg.setHeaderColor(tg.themeParams.bg_color || '#000000');
-            tg.setBackgroundColor(tg.themeParams.bg_color || '#000000');
-            // Если есть меню бота, три точки появятся автоматически
+            tg.expand();
+            tg.requestFullscreen(); // Запрашиваем полноэкранный режим (header становится прозрачным)
+            tg.setHeaderColor('bg_color');   // Используем цвет темы → header прозрачный/сливается
+            tg.setBackgroundColor('bg_color');
+            // Отключаем вертикальные свайпы, чтобы не мешали джойстику
+            if (tg.disableVerticalSwipes) {
+                tg.disableVerticalSwipes();
+            }
         }
 
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
         const messageDiv = document.getElementById('orientationMessage');
-        // Проверка мобильного устройства
+
         const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || isTelegram;
-        // Размеры
+
         let SCREEN_WIDTH = window.innerWidth;
         let SCREEN_HEIGHT = window.innerHeight;
-        // Загрузка изображений откладывается
+
         let mapImg, charImg, mapLoaded = false, charLoaded = false;
         let MAP_WIDTH = 800, MAP_HEIGHT = 600;
         let charWidth = 50, charHeight = 50;
-        // Позиция персонажа
+
         let charX, charY;
-        let charSpeed = 400; // Увеличена скорость для лучшей отзывчивости (px/s)
-        // Камера
+        let charSpeed = 500; // Ещё немного увеличена для более отзывчивого ощущения
+
         let cameraX = 0, cameraY = 0;
-        // Клавиши
+
         const keys = {};
         window.addEventListener('keydown', (e) => { keys[e.key.toLowerCase()] = true; });
         window.addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
-        // Джойстик
+
         let joystickActive = false;
-        const joystickRadius = 50;
-        let joystickCenter = { x: 100, y: SCREEN_HEIGHT - 100 };
+        const joystickRadius = 60; // Чуть больше для удобства
+        let joystickCenter = { x: 120, y: SCREEN_HEIGHT - 120 };
         let joystickPos = { x: 0, y: 0 };
         let touchId = null;
-        // Время для дельты
+
         let lastTime = 0;
-        // Проверка ориентации с принуждением
+
         async function checkOrientation(andStartGame = false) {
             SCREEN_WIDTH = window.innerWidth;
             SCREEN_HEIGHT = window.innerHeight;
             canvas.width = SCREEN_WIDTH;
             canvas.height = SCREEN_HEIGHT;
-            joystickCenter.y = SCREEN_HEIGHT - 100;
+            joystickCenter.y = SCREEN_HEIGHT - 120;
             const isLandscape = SCREEN_WIDTH > SCREEN_HEIGHT;
+
             if (!isMobile) {
                 messageDiv.style.display = 'none';
                 canvas.style.display = 'block';
                 if (andStartGame) await startGame();
                 return;
             }
+
             if (isLandscape) {
                 messageDiv.style.display = 'none';
                 canvas.style.display = 'block';
-                if (screen.orientation && screen.orientation.lock && !isTelegram) {
-                    try {
-                        if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
-                            await document.documentElement.requestFullscreen();
-                        }
-                        await screen.orientation.lock('landscape');
-                    } catch (err) {}
-                }
                 if (andStartGame) await startGame();
             } else {
                 messageDiv.style.display = 'flex';
@@ -125,9 +121,10 @@
                 }
             }
         }
-        // Старт игры только в landscape
+
         async function startGame() {
             if (mapLoaded && charLoaded) return;
+
             mapImg = new Image();
             mapImg.src = 'map.png';
             await new Promise(resolve => {
@@ -135,7 +132,7 @@
                     let originalMapWidth = mapImg.width;
                     let originalMapHeight = mapImg.height;
                     if (isMobile) {
-                        const scale = Math.min(SCREEN_WIDTH / originalMapWidth, SCREEN_HEIGHT / originalMapHeight) * 0.9;
+                        const scale = Math.min(SCREEN_WIDTH / originalMapWidth, SCREEN_HEIGHT / originalMapHeight) * 0.85; // Ещё чуть меньше
                         MAP_WIDTH = originalMapWidth * scale;
                         MAP_HEIGHT = originalMapHeight * scale;
                     } else {
@@ -145,10 +142,9 @@
                     mapLoaded = true;
                     resolve();
                 };
-                mapImg.onerror = () => {
-                    resolve();
-                };
+                mapImg.onerror = resolve;
             });
+
             charImg = new Image();
             charImg.src = 'character.png';
             await new Promise(resolve => {
@@ -167,112 +163,134 @@
                     charLoaded = true;
                     resolve();
                 };
-                charImg.onerror = () => {
-                    resolve();
-                };
+                charImg.onerror = resolve;
             });
+
             charX = MAP_WIDTH / 2 - charWidth / 2;
             charY = MAP_HEIGHT / 2 - charHeight / 2;
+
             if (isMobile) {
                 canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
                 canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
                 canvas.addEventListener('touchend', handleTouchEnd, { passive: false });
+                canvas.addEventListener('touchcancel', handleTouchEnd, { passive: false });
             }
+
             lastTime = performance.now();
-            gameLoop();
+            requestAnimationFrame(gameLoop);
         }
-        // Touch handlers
+
         function handleTouchStart(e) {
             e.preventDefault();
-            const touch = e.touches[0];
+            if (joystickActive) return;
+            const touch = e.changedTouches[0];
             const rect = canvas.getBoundingClientRect();
             const touchX = touch.clientX - rect.left;
             const touchY = touch.clientY - rect.top;
             const dist = Math.hypot(touchX - joystickCenter.x, touchY - joystickCenter.y);
-            if (dist <= joystickRadius * 2 && !joystickActive) {
+            if (dist < joystickRadius * 3) {  // Увеличен радиус активации
                 joystickActive = true;
                 joystickPos.x = touchX;
                 joystickPos.y = touchY;
                 touchId = touch.identifier;
             }
         }
+
         function handleTouchMove(e) {
             e.preventDefault();
-            if (joystickActive) {
-                for (let touch of e.touches) {
-                    if (touch.identifier === touchId) {
-                        const rect = canvas.getBoundingClientRect();
-                        joystickPos.x = touch.clientX - rect.left;
-                        joystickPos.y = touch.clientY - rect.top;
-                        break;
-                    }
+            if (!joystickActive) return;
+            for (let touch of e.changedTouches) {
+                if (touch.identifier === touchId) {
+                    const rect = canvas.getBoundingClientRect();
+                    joystickPos.x = touch.clientX - rect.left;
+                    joystickPos.y = touch.clientY - rect.top;
+                    break;
                 }
             }
         }
+
         function handleTouchEnd(e) {
             e.preventDefault();
             joystickActive = false;
             touchId = null;
         }
-        // Игровой цикл
+
         function gameLoop(timestamp) {
-            const delta = (timestamp - lastTime) / 1000;
+            if (!lastTime) lastTime = timestamp;
+            const delta = Math.min((timestamp - lastTime) / 1000, 0.1); // Ограничим delta, чтобы не было скачков
             lastTime = timestamp;
-            // Движение
+
             const moveDelta = charSpeed * delta;
-            if (keys['w']) charY -= moveDelta;
-            if (keys['s']) charY += moveDelta;
-            if (keys['a']) charX -= moveDelta;
-            if (keys['d']) charX += moveDelta;
-            if (isMobile && joystickActive) {
+
+            // Клавиатура
+            if (keys['w'] || keys['arrowup']) charY -= moveDelta;
+            if (keys['s'] || keys['arrowdown']) charY += moveDelta;
+            if (keys['a'] || keys['arrowleft']) charX -= moveDelta;
+            if (keys['d'] || keys['arrowright']) charX += moveDelta;
+
+            // Джойстик
+            if (joystickActive) {
                 let dx = joystickPos.x - joystickCenter.x;
                 let dy = joystickPos.y - joystickCenter.y;
                 let dist = Math.hypot(dx, dy);
-                if (dist > 0) {
+                if (dist > 0.01) {
+                    const maxMove = joystickRadius;
+                    const power = Math.min(dist / maxMove, 1);
                     dx /= dist;
                     dy /= dist;
-                    if (dist > joystickRadius) dist = joystickRadius;
-                    charX += dx * moveDelta * (dist / joystickRadius);
-                    charY += dy * moveDelta * (dist / joystickRadius);
+                    charX += dx * moveDelta * power * 1.2; // *1.2 для более сильного отклика
+                    charY += dy * moveDelta * power * 1.2;
                 }
             }
-            // Ограничения
+
+            // Границы карты
             charX = Math.max(0, Math.min(charX, MAP_WIDTH - charWidth));
             charY = Math.max(0, Math.min(charY, MAP_HEIGHT - charHeight));
-            // Камера с сглаживанием для плавности
+
+            // Камера — более плавное сглаживание
             let desiredCameraX = charX + charWidth / 2 - SCREEN_WIDTH / 2;
             let desiredCameraY = charY + charHeight / 2 - SCREEN_HEIGHT / 2;
-            cameraX = cameraX + (desiredCameraX - cameraX) * 0.2; // Сглаживание (0.2 - коэффициент, можно調整)
-            cameraY = cameraY + (desiredCameraY - cameraY) * 0.2;
-            cameraX = MAP_WIDTH > SCREEN_WIDTH ? Math.max(0, Math.min(cameraX, MAP_WIDTH - SCREEN_WIDTH)) : 0;
-            cameraY = MAP_HEIGHT > SCREEN_HEIGHT ? Math.max(0, Math.min(cameraY, MAP_HEIGHT - SCREEN_HEIGHT)) : 0;
-            // Оффсет
+
+            const lerpFactor = 0.35; // Быстрее реагирует на движение
+            cameraX += (desiredCameraX - cameraX) * lerpFactor;
+            cameraY += (desiredCameraY - cameraY) * lerpFactor;
+
+            cameraX = Math.max(0, Math.min(cameraX, MAP_WIDTH - SCREEN_WIDTH));
+            cameraY = Math.max(0, Math.min(cameraY, MAP_HEIGHT - SCREEN_HEIGHT));
+
             const offsetX = MAP_WIDTH < SCREEN_WIDTH ? (SCREEN_WIDTH - MAP_WIDTH) / 2 : 0;
             const offsetY = MAP_HEIGHT < SCREEN_HEIGHT ? (SCREEN_HEIGHT - MAP_HEIGHT) / 2 : 0;
+
             // Отрисовка
             ctx.clearRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
+
             const mapDrawX = offsetX - cameraX;
             const mapDrawY = offsetY - cameraY;
+
             if (mapLoaded) {
                 ctx.drawImage(mapImg, mapDrawX, mapDrawY, MAP_WIDTH, MAP_HEIGHT);
             } else {
                 ctx.fillStyle = 'gray';
                 ctx.fillRect(mapDrawX, mapDrawY, MAP_WIDTH, MAP_HEIGHT);
             }
+
             const screenCharX = charX + offsetX - cameraX;
             const screenCharY = charY + offsetY - cameraY;
+
             if (charLoaded) {
                 ctx.drawImage(charImg, screenCharX, screenCharY, charWidth, charHeight);
             } else {
                 ctx.fillStyle = 'red';
                 ctx.fillRect(screenCharX, screenCharY, charWidth, charHeight);
             }
+
             // Джойстик
             if (isMobile && joystickActive) {
-                ctx.fillStyle = 'rgba(200, 200, 200, 0.5)';
+                ctx.fillStyle = 'rgba(200,200,200,0.4)';
                 ctx.beginPath();
-                ctx.arc(joystickCenter.x, joystickCenter.y, joystickRadius * 2, 0, Math.PI * 2);
+                ctx.arc(joystickCenter.x, joystickCenter.y, joystickRadius * 2.2, 0, Math.PI * 2);
                 ctx.fill();
+
                 let dx = joystickPos.x - joystickCenter.x;
                 let dy = joystickPos.y - joystickCenter.y;
                 let dist = Math.hypot(dx, dy);
@@ -280,14 +298,15 @@
                     dx = dx / dist * joystickRadius;
                     dy = dy / dist * joystickRadius;
                 }
-                ctx.fillStyle = 'rgba(100, 100, 100, 0.5)';
+                ctx.fillStyle = 'rgba(100,100,100,0.7)';
                 ctx.beginPath();
                 ctx.arc(joystickCenter.x + dx, joystickCenter.y + dy, joystickRadius, 0, Math.PI * 2);
                 ctx.fill();
             }
+
             requestAnimationFrame(gameLoop);
         }
-        // Инициализация
+
         window.addEventListener('resize', () => checkOrientation(true));
         window.addEventListener('orientationchange', () => checkOrientation(true));
         checkOrientation(true);
