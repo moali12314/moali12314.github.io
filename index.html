@@ -35,21 +35,34 @@
     <div id="orientationMessage">Переверните устройство в горизонтальное положение для игры.</div>
     <canvas id="gameCanvas"></canvas>
     <script>
-        // Интеграция с Telegram Web App
+        // Интеграция с Telegram Web App — максимально возможное скрытие/прозрачность header
         let isTelegram = false;
         let tg;
         if (window.Telegram && window.Telegram.WebApp) {
             isTelegram = true;
             tg = window.Telegram.WebApp;
             tg.ready();
-            tg.expand();
-            tg.requestFullscreen(); // Запрашиваем полноэкранный режим (header становится прозрачным)
-            tg.setHeaderColor('bg_color');   // Используем цвет темы → header прозрачный/сливается
+            tg.expand(); // Расширяем по высоте (важно для старых версий)
+
+            // Пытаемся войти в полноэкранный режим (header становится прозрачным/невидимым)
+            if (tg.requestFullscreen && tg.requestFullscreen.isAvailable && tg.requestFullscreen.isAvailable()) {
+                tg.requestFullscreen().catch(err => console.log("Fullscreen request failed:", err));
+            } else if (tg.isVersionAtLeast && tg.isVersionAtLeast("8.0")) {
+                // Для Bot API 8.0+ (2025+ версии Telegram)
+                tg.requestFullscreen();
+            }
+
+            // Устанавливаем цвет header в цвет фона → он сливается и становится почти невидимым
+            tg.setHeaderColor('bg_color');       // или '#000000' если bg_color не сработает
             tg.setBackgroundColor('bg_color');
-            // Отключаем вертикальные свайпы, чтобы не мешали джойстику
+
+            // Отключаем вертикальные свайпы (чтобы не тянуть вниз и не показывать header)
             if (tg.disableVerticalSwipes) {
                 tg.disableVerticalSwipes();
             }
+
+            // Дополнительно: если есть SDK @telegram-apps/sdk (современный подход 2025–2026)
+            // Но поскольку мы не подключаем внешние библиотеки, используем нативный WebApp
         }
 
         const canvas = document.getElementById('gameCanvas');
@@ -66,7 +79,7 @@
         let charWidth = 50, charHeight = 50;
 
         let charX, charY;
-        let charSpeed = 500; // Ещё немного увеличена для более отзывчивого ощущения
+        let charSpeed = 500; // px/s
 
         let cameraX = 0, cameraY = 0;
 
@@ -74,11 +87,16 @@
         window.addEventListener('keydown', (e) => { keys[e.key.toLowerCase()] = true; });
         window.addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
 
-        let joystickActive = false;
-        const joystickRadius = 60; // Чуть больше для удобства
-        let joystickCenter = { x: 120, y: SCREEN_HEIGHT - 120 };
-        let joystickPos = { x: 0, y: 0 };
-        let touchId = null;
+        // Динамический джойстик (активируется в любой точке левой половины)
+        let joystick = {
+            active: false,
+            centerX: 0,
+            centerY: 0,
+            currentX: 0,
+            currentY: 0,
+            touchId: null,
+            radius: 60
+        };
 
         let lastTime = 0;
 
@@ -87,7 +105,6 @@
             SCREEN_HEIGHT = window.innerHeight;
             canvas.width = SCREEN_WIDTH;
             canvas.height = SCREEN_HEIGHT;
-            joystickCenter.y = SCREEN_HEIGHT - 120;
             const isLandscape = SCREEN_WIDTH > SCREEN_HEIGHT;
 
             if (!isMobile) {
@@ -132,7 +149,7 @@
                     let originalMapWidth = mapImg.width;
                     let originalMapHeight = mapImg.height;
                     if (isMobile) {
-                        const scale = Math.min(SCREEN_WIDTH / originalMapWidth, SCREEN_HEIGHT / originalMapHeight) * 0.85; // Ещё чуть меньше
+                        const scale = Math.min(SCREEN_WIDTH / originalMapWidth, SCREEN_HEIGHT / originalMapHeight) * 0.85;
                         MAP_WIDTH = originalMapWidth * scale;
                         MAP_HEIGHT = originalMapHeight * scale;
                     } else {
@@ -182,28 +199,32 @@
 
         function handleTouchStart(e) {
             e.preventDefault();
-            if (joystickActive) return;
-            const touch = e.changedTouches[0];
-            const rect = canvas.getBoundingClientRect();
-            const touchX = touch.clientX - rect.left;
-            const touchY = touch.clientY - rect.top;
-            const dist = Math.hypot(touchX - joystickCenter.x, touchY - joystickCenter.y);
-            if (dist < joystickRadius * 3) {  // Увеличен радиус активации
-                joystickActive = true;
-                joystickPos.x = touchX;
-                joystickPos.y = touchY;
-                touchId = touch.identifier;
+            if (joystick.active) return;
+            for (let touch of e.changedTouches) {
+                const rect = canvas.getBoundingClientRect();
+                const touchX = touch.clientX - rect.left;
+                const touchY = touch.clientY - rect.top;
+                // Активация только в левой половине экрана
+                if (touchX < SCREEN_WIDTH / 2) {
+                    joystick.active = true;
+                    joystick.centerX = touchX;
+                    joystick.centerY = touchY;
+                    joystick.currentX = touchX;
+                    joystick.currentY = touchY;
+                    joystick.touchId = touch.identifier;
+                    break;
+                }
             }
         }
 
         function handleTouchMove(e) {
             e.preventDefault();
-            if (!joystickActive) return;
-            for (let touch of e.changedTouches) {
-                if (touch.identifier === touchId) {
+            if (!joystick.active) return;
+            for (let touch of e.touches) {  // changedTouches может не всегда работать стабильно
+                if (touch.identifier === joystick.touchId) {
                     const rect = canvas.getBoundingClientRect();
-                    joystickPos.x = touch.clientX - rect.left;
-                    joystickPos.y = touch.clientY - rect.top;
+                    joystick.currentX = touch.clientX - rect.left;
+                    joystick.currentY = touch.clientY - rect.top;
                     break;
                 }
             }
@@ -211,13 +232,12 @@
 
         function handleTouchEnd(e) {
             e.preventDefault();
-            joystickActive = false;
-            touchId = null;
+            joystick.active = false;
+            joystick.touchId = null;
         }
 
         function gameLoop(timestamp) {
-            if (!lastTime) lastTime = timestamp;
-            const delta = Math.min((timestamp - lastTime) / 1000, 0.1); // Ограничим delta, чтобы не было скачков
+            const delta = Math.min((timestamp - lastTime) / 1000, 0.1);
             lastTime = timestamp;
 
             const moveDelta = charSpeed * delta;
@@ -229,29 +249,28 @@
             if (keys['d'] || keys['arrowright']) charX += moveDelta;
 
             // Джойстик
-            if (joystickActive) {
-                let dx = joystickPos.x - joystickCenter.x;
-                let dy = joystickPos.y - joystickCenter.y;
+            if (joystick.active) {
+                let dx = joystick.currentX - joystick.centerX;
+                let dy = joystick.currentY - joystick.centerY;
                 let dist = Math.hypot(dx, dy);
                 if (dist > 0.01) {
-                    const maxMove = joystickRadius;
-                    const power = Math.min(dist / maxMove, 1);
                     dx /= dist;
                     dy /= dist;
-                    charX += dx * moveDelta * power * 1.2; // *1.2 для более сильного отклика
-                    charY += dy * moveDelta * power * 1.2;
+                    const power = Math.min(dist / joystick.radius, 1);
+                    charX += dx * moveDelta * power * 1.1; // небольшой буст для отзывчивости
+                    charY += dy * moveDelta * power * 1.1;
                 }
             }
 
-            // Границы карты
+            // Границы
             charX = Math.max(0, Math.min(charX, MAP_WIDTH - charWidth));
             charY = Math.max(0, Math.min(charY, MAP_HEIGHT - charHeight));
 
-            // Камера — более плавное сглаживание
+            // Камера
             let desiredCameraX = charX + charWidth / 2 - SCREEN_WIDTH / 2;
             let desiredCameraY = charY + charHeight / 2 - SCREEN_HEIGHT / 2;
 
-            const lerpFactor = 0.35; // Быстрее реагирует на движение
+            const lerpFactor = 0.4; // быстрее следование
             cameraX += (desiredCameraX - cameraX) * lerpFactor;
             cameraY += (desiredCameraY - cameraY) * lerpFactor;
 
@@ -284,23 +303,23 @@
                 ctx.fillRect(screenCharX, screenCharY, charWidth, charHeight);
             }
 
-            // Джойстик
-            if (isMobile && joystickActive) {
-                ctx.fillStyle = 'rgba(200,200,200,0.4)';
+            // Джойстик визуализация
+            if (isMobile && joystick.active) {
+                ctx.fillStyle = 'rgba(200,200,200,0.35)';
                 ctx.beginPath();
-                ctx.arc(joystickCenter.x, joystickCenter.y, joystickRadius * 2.2, 0, Math.PI * 2);
+                ctx.arc(joystick.centerX, joystick.centerY, joystick.radius * 1.6, 0, Math.PI * 2);
                 ctx.fill();
 
-                let dx = joystickPos.x - joystickCenter.x;
-                let dy = joystickPos.y - joystickCenter.y;
+                let dx = joystick.currentX - joystick.centerX;
+                let dy = joystick.currentY - joystick.centerY;
                 let dist = Math.hypot(dx, dy);
-                if (dist > joystickRadius) {
-                    dx = dx / dist * joystickRadius;
-                    dy = dy / dist * joystickRadius;
+                if (dist > joystick.radius) {
+                    dx = dx / dist * joystick.radius;
+                    dy = dy / dist * joystick.radius;
                 }
-                ctx.fillStyle = 'rgba(100,100,100,0.7)';
+                ctx.fillStyle = 'rgba(100,100,100,0.75)';
                 ctx.beginPath();
-                ctx.arc(joystickCenter.x + dx, joystickCenter.y + dy, joystickRadius, 0, Math.PI * 2);
+                ctx.arc(joystick.centerX + dx, joystick.centerY + dy, joystick.radius * 0.7, 0, Math.PI * 2);
                 ctx.fill();
             }
 
