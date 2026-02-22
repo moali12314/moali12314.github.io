@@ -62,10 +62,10 @@
                     })
                     .catch(err => {
                         console.log("Telegram fullscreen request failed:", err);
-                        // Fallback: используем браузерный fullscreen API
+                        // Fallback: используем браузерный fullscreen API с опцией скрытия навигации
                         if (document.documentElement.requestFullscreen) {
-                            document.documentElement.requestFullscreen()
-                                .then(() => console.log("Fullscreen enabled via browser API"))
+                            document.documentElement.requestFullscreen({ navigationUI: "hide" })
+                                .then(() => console.log("Fullscreen enabled via browser API with navigation hidden"))
                                 .catch(fallbackErr => console.log("Browser fullscreen failed:", fallbackErr));
                         }
                         // И пытаемся заблокировать ориентацию
@@ -74,10 +74,10 @@
                         }
                     });
             } else {
-                // Если Telegram API не поддерживает, fallback на браузерный fullscreen
+                // Если Telegram API не поддерживает, fallback на браузерный fullscreen с опцией скрытия навигации
                 if (document.documentElement.requestFullscreen) {
-                    document.documentElement.requestFullscreen()
-                        .then(() => console.log("Fullscreen enabled via browser API"))
+                    document.documentElement.requestFullscreen({ navigationUI: "hide" })
+                        .then(() => console.log("Fullscreen enabled via browser API with navigation hidden"))
                         .catch(err => console.log("Browser fullscreen failed:", err));
                 }
                 if (screen.orientation && screen.orientation.lock) {
@@ -90,18 +90,23 @@
                     console.log("Entered fullscreen mode");
                 } else {
                     console.log("Exited fullscreen mode");
+                    // Опционально: повторно запросить fullscreen, если вышел
+                    // tg.requestFullscreen().catch(() => {});
                 }
             });
             tg.onEvent('fullscreenFailed', (error) => {
                 console.log("Fullscreen failed:", error);
-                // Можно повторить попытку или показать сообщение
+                // Fallback на браузерный fullscreen при ошибке
+                if (document.documentElement.requestFullscreen) {
+                    document.documentElement.requestFullscreen({ navigationUI: "hide" }).catch(() => {});
+                }
             });
             // Дополнительно: если есть SDK @telegram-apps/sdk (современный подход 2025–2026)
             // Но поскольку мы не подключаем внешние библиотеки, используем нативный WebApp
         } else {
-            // Если не в Telegram, сразу пытаемся fullscreen и landscape lock
+            // Если не в Telegram, сразу пытаемся fullscreen с скрытием навигации и landscape lock
             if (document.documentElement.requestFullscreen) {
-                document.documentElement.requestFullscreen().catch(err => console.log("Fullscreen failed:", err));
+                document.documentElement.requestFullscreen({ navigationUI: "hide" }).catch(err => console.log("Fullscreen failed:", err));
             }
             if (screen.orientation && screen.orientation.lock) {
                 screen.orientation.lock('landscape').catch(err => console.log("Orientation lock failed:", err));
@@ -157,11 +162,11 @@
                     button.id = 'rotateButton';
                     button.textContent = 'Перевернуть';
                     button.onclick = async () => {
-                        // При нажатии на кнопку также пытаемся fullscreen
+                        // При нажатии на кнопку также пытаемся fullscreen с скрытием навигации
                         if (isTelegram && tg.requestFullscreen) {
                             tg.requestFullscreen().catch(() => {});
                         } else if (document.documentElement.requestFullscreen) {
-                            document.documentElement.requestFullscreen().catch(() => {});
+                            document.documentElement.requestFullscreen({ navigationUI: "hide" }).catch(() => {});
                         }
                         if (screen.orientation && screen.orientation.lock) {
                             screen.orientation.lock('landscape').catch(() => {});
