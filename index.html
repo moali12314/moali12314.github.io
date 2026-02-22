@@ -42,11 +42,12 @@
             isTelegram = true;
             tg = window.Telegram.WebApp;
             tg.ready();
-            tg.expand(); // Расширить на полный экран, чтобы скрыть навигационные бары
-            tg.setHeaderColor('#000000'); // Установить цвет заголовка в чёрный, чтобы слить с фоном (не полностью скрывает, но делает менее заметным)
-            // Заголовок в Telegram Web App по умолчанию имеет "закрыть" (X) справа и иногда три точки для меню, если оно настроено в боте.
-            // Полностью скрыть заголовок невозможно, но с чёрным цветом на чёрном фоне он становится почти невидимым.
-            // Чтобы настроить меню (три точки), это делается на стороне бота через BotFather или API, не в коде Web App.
+            tg.expand(); // Расширить на полный экран
+            // Установка цвета заголовка в соответствии с темой, чтобы слить с фоном
+            // Полностью скрыть заголовок невозможно, но можно сделать его менее заметным
+            tg.setHeaderColor(tg.themeParams.bg_color || '#000000');
+            tg.setBackgroundColor(tg.themeParams.bg_color || '#000000');
+            // Если есть меню бота, три точки появятся автоматически
         }
 
         const canvas = document.getElementById('gameCanvas');
@@ -63,7 +64,7 @@
         let charWidth = 50, charHeight = 50;
         // Позиция персонажа
         let charX, charY;
-        let charSpeed = 300; // Скорость в пикселях в секунду (для плавного движения)
+        let charSpeed = 400; // Увеличена скорость для лучшей отзывчивости (px/s)
         // Камера
         let cameraX = 0, cameraY = 0;
         // Клавиши
@@ -92,11 +93,9 @@
                 if (andStartGame) await startGame();
                 return;
             }
-            // Принуждение: показываем надпись всегда в portrait, скрываем в landscape
             if (isLandscape) {
                 messageDiv.style.display = 'none';
                 canvas.style.display = 'block';
-                // Автоматический lock в landscape
                 if (screen.orientation && screen.orientation.lock && !isTelegram) {
                     try {
                         if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
@@ -120,7 +119,6 @@
                         if (screen.orientation && screen.orientation.lock) {
                             screen.orientation.lock('landscape').catch(() => {});
                         }
-                        // Повторная проверка после клика
                         setTimeout(() => checkOrientation(true), 500);
                     };
                     messageDiv.appendChild(button);
@@ -129,16 +127,15 @@
         }
         // Старт игры только в landscape
         async function startGame() {
-            if (mapLoaded && charLoaded) return; // Не загружать повторно
-            // Загрузка изображений (одинаковая для ПК и мобильных)
+            if (mapLoaded && charLoaded) return;
             mapImg = new Image();
-            mapImg.src = 'map.png'; // Измени здесь на своё изображение карты (одинаковое для всех)
+            mapImg.src = 'map.png';
             await new Promise(resolve => {
                 mapImg.onload = () => {
                     let originalMapWidth = mapImg.width;
                     let originalMapHeight = mapImg.height;
                     if (isMobile) {
-                        const scale = Math.min(SCREEN_WIDTH / originalMapWidth, SCREEN_HEIGHT / originalMapHeight) * 0.9; // Чуть меньше, чтобы помещалась полностью
+                        const scale = Math.min(SCREEN_WIDTH / originalMapWidth, SCREEN_HEIGHT / originalMapHeight) * 0.9;
                         MAP_WIDTH = originalMapWidth * scale;
                         MAP_HEIGHT = originalMapHeight * scale;
                     } else {
@@ -149,20 +146,20 @@
                     resolve();
                 };
                 mapImg.onerror = () => {
-                    resolve(); // Fallback
+                    resolve();
                 };
             });
             charImg = new Image();
-            charImg.src = 'character.png'; // Измени здесь на своё изображение персонажа
+            charImg.src = 'character.png';
             await new Promise(resolve => {
                 charImg.onload = () => {
                     let originalCharWidth = charImg.width;
                     let originalCharHeight = charImg.height;
                     if (isMobile) {
-                        const mapScale = MAP_WIDTH / mapImg.width; // Используем scale от карты для согласованности
+                        const mapScale = MAP_WIDTH / mapImg.width;
                         charWidth = originalCharWidth * mapScale;
                         charHeight = originalCharHeight * mapScale;
-                        charSpeed *= mapScale; // Масштабируем скорость (но теперь speed в px/s, так что OK)
+                        charSpeed *= mapScale;
                     } else {
                         charWidth = originalCharWidth;
                         charHeight = originalCharHeight;
@@ -171,12 +168,11 @@
                     resolve();
                 };
                 charImg.onerror = () => {
-                    resolve(); // Fallback
+                    resolve();
                 };
             });
             charX = MAP_WIDTH / 2 - charWidth / 2;
             charY = MAP_HEIGHT / 2 - charHeight / 2;
-            // Touch events для джойстика (с e.preventDefault внутри и passive: false)
             if (isMobile) {
                 canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
                 canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
@@ -185,7 +181,7 @@
             lastTime = performance.now();
             gameLoop();
         }
-        // Touch handlers с preventDefault
+        // Touch handlers
         function handleTouchStart(e) {
             e.preventDefault();
             const touch = e.touches[0];
@@ -220,10 +216,9 @@
         }
         // Игровой цикл
         function gameLoop(timestamp) {
-            if (!lastTime) lastTime = timestamp;
-            const delta = (timestamp - lastTime) / 1000; // в секундах
+            const delta = (timestamp - lastTime) / 1000;
             lastTime = timestamp;
-            // Движение (время-независимое)
+            // Движение
             const moveDelta = charSpeed * delta;
             if (keys['w']) charY -= moveDelta;
             if (keys['s']) charY += moveDelta;
@@ -244,12 +239,14 @@
             // Ограничения
             charX = Math.max(0, Math.min(charX, MAP_WIDTH - charWidth));
             charY = Math.max(0, Math.min(charY, MAP_HEIGHT - charHeight));
-            // Камера
+            // Камера с сглаживанием для плавности
             let desiredCameraX = charX + charWidth / 2 - SCREEN_WIDTH / 2;
             let desiredCameraY = charY + charHeight / 2 - SCREEN_HEIGHT / 2;
-            cameraX = MAP_WIDTH > SCREEN_WIDTH ? Math.max(0, Math.min(desiredCameraX, MAP_WIDTH - SCREEN_WIDTH)) : 0;
-            cameraY = MAP_HEIGHT > SCREEN_HEIGHT ? Math.max(0, Math.min(desiredCameraY, MAP_HEIGHT - SCREEN_HEIGHT)) : 0;
-            // Оффсет для центрирования (без масштабирования, чтобы карта была одинаковой)
+            cameraX = cameraX + (desiredCameraX - cameraX) * 0.2; // Сглаживание (0.2 - коэффициент, можно調整)
+            cameraY = cameraY + (desiredCameraY - cameraY) * 0.2;
+            cameraX = MAP_WIDTH > SCREEN_WIDTH ? Math.max(0, Math.min(cameraX, MAP_WIDTH - SCREEN_WIDTH)) : 0;
+            cameraY = MAP_HEIGHT > SCREEN_HEIGHT ? Math.max(0, Math.min(cameraY, MAP_HEIGHT - SCREEN_HEIGHT)) : 0;
+            // Оффсет
             const offsetX = MAP_WIDTH < SCREEN_WIDTH ? (SCREEN_WIDTH - MAP_WIDTH) / 2 : 0;
             const offsetY = MAP_HEIGHT < SCREEN_HEIGHT ? (SCREEN_HEIGHT - MAP_HEIGHT) / 2 : 0;
             // Отрисовка
