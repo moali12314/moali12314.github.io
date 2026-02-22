@@ -50,15 +50,12 @@
             if (tg.disableVerticalSwipes) {
                 tg.disableVerticalSwipes();
             }
-            // Запрос fullscreen для прозрачности header и полного экрана
+            // Запрос fullscreen сразу после ready для полного экрана без задержек
             if (tg.requestFullscreen) {
                 tg.requestFullscreen()
                     .then(() => {
                         console.log("Fullscreen enabled via Telegram API");
-                        // Дополнительно пытаемся заблокировать ориентацию в landscape
-                        if (screen.orientation && screen.orientation.lock) {
-                            screen.orientation.lock('landscape').catch(err => console.log("Orientation lock failed:", err));
-                        }
+                        // Не лочим ориентацию, чтобы работало в любом режиме
                     })
                     .catch(err => {
                         console.log("Telegram fullscreen request failed:", err);
@@ -68,10 +65,6 @@
                                 .then(() => console.log("Fullscreen enabled via browser API with navigation hidden"))
                                 .catch(fallbackErr => console.log("Browser fullscreen failed:", fallbackErr));
                         }
-                        // И пытаемся заблокировать ориентацию
-                        if (screen.orientation && screen.orientation.lock) {
-                            screen.orientation.lock('landscape').catch(err => console.log("Orientation lock failed:", err));
-                        }
                     });
             } else {
                 // Если Telegram API не поддерживает, fallback на браузерный fullscreen с опцией скрытия навигации
@@ -80,9 +73,6 @@
                         .then(() => console.log("Fullscreen enabled via browser API with navigation hidden"))
                         .catch(err => console.log("Browser fullscreen failed:", err));
                 }
-                if (screen.orientation && screen.orientation.lock) {
-                    screen.orientation.lock('landscape').catch(err => console.log("Orientation lock failed:", err));
-                }
             }
             // Слушаем события fullscreen
             tg.onEvent('fullscreenChanged', () => {
@@ -90,8 +80,8 @@
                     console.log("Entered fullscreen mode");
                 } else {
                     console.log("Exited fullscreen mode");
-                    // Опционально: повторно запросить fullscreen, если вышел
-                    // tg.requestFullscreen().catch(() => {});
+                    // Повторно запросить, если вышел
+                    tg.requestFullscreen().catch(() => {});
                 }
             });
             tg.onEvent('fullscreenFailed', (error) => {
@@ -101,15 +91,10 @@
                     document.documentElement.requestFullscreen({ navigationUI: "hide" }).catch(() => {});
                 }
             });
-            // Дополнительно: если есть SDK @telegram-apps/sdk (современный подход 2025–2026)
-            // Но поскольку мы не подключаем внешние библиотеки, используем нативный WebApp
         } else {
-            // Если не в Telegram, сразу пытаемся fullscreen с скрытием навигации и landscape lock
+            // Если не в Telegram, сразу пытаемся fullscreen с скрытием навигации
             if (document.documentElement.requestFullscreen) {
                 document.documentElement.requestFullscreen({ navigationUI: "hide" }).catch(err => console.log("Fullscreen failed:", err));
-            }
-            if (screen.orientation && screen.orientation.lock) {
-                screen.orientation.lock('landscape').catch(err => console.log("Orientation lock failed:", err));
             }
         }
         const canvas = document.getElementById('gameCanvas');
@@ -143,39 +128,10 @@
             SCREEN_HEIGHT = window.innerHeight;
             canvas.width = SCREEN_WIDTH;
             canvas.height = SCREEN_HEIGHT;
-            const isLandscape = SCREEN_WIDTH > SCREEN_HEIGHT;
-            if (!isMobile) {
-                messageDiv.style.display = 'none';
-                canvas.style.display = 'block';
-                if (andStartGame) await startGame();
-                return;
-            }
-            if (isLandscape) {
-                messageDiv.style.display = 'none';
-                canvas.style.display = 'block';
-                if (andStartGame) await startGame();
-            } else {
-                messageDiv.style.display = 'flex';
-                canvas.style.display = 'none';
-                if (!document.getElementById('rotateButton')) {
-                    const button = document.createElement('button');
-                    button.id = 'rotateButton';
-                    button.textContent = 'Перевернуть';
-                    button.onclick = async () => {
-                        // При нажатии на кнопку также пытаемся fullscreen с скрытием навигации
-                        if (isTelegram && tg.requestFullscreen) {
-                            tg.requestFullscreen().catch(() => {});
-                        } else if (document.documentElement.requestFullscreen) {
-                            document.documentElement.requestFullscreen({ navigationUI: "hide" }).catch(() => {});
-                        }
-                        if (screen.orientation && screen.orientation.lock) {
-                            screen.orientation.lock('landscape').catch(() => {});
-                        }
-                        setTimeout(() => checkOrientation(true), 500);
-                    };
-                    messageDiv.appendChild(button);
-                }
-            }
+            // Убрали проверку на landscape, запускаем сразу без сообщения о повороте
+            messageDiv.style.display = 'none';
+            canvas.style.display = 'block';
+            if (andStartGame) await startGame();
         }
         async function startGame() {
             if (mapLoaded && charLoaded) return;
@@ -290,10 +246,10 @@
             // Границы
             charX = Math.max(0, Math.min(charX, MAP_WIDTH - charWidth));
             charY = Math.max(0, Math.min(charY, MAP_HEIGHT - charHeight));
-            // Камера
+            // Камера - переработано: мгновенное следование за персонажем для плавного движения без лагов
             let desiredCameraX = charX + charWidth / 2 - SCREEN_WIDTH / 2;
             let desiredCameraY = charY + charHeight / 2 - SCREEN_HEIGHT / 2;
-            const lerpFactor = 0.4; // быстрее следование
+            const lerpFactor = 1; // 1 для мгновенного следования, убирает прерывистость
             cameraX += (desiredCameraX - cameraX) * lerpFactor;
             cameraY += (desiredCameraY - cameraY) * lerpFactor;
             cameraX = Math.max(0, Math.min(cameraX, MAP_WIDTH - SCREEN_WIDTH));
@@ -340,6 +296,7 @@
         }
         window.addEventListener('resize', () => checkOrientation(true));
         window.addEventListener('orientationchange', () => checkOrientation(true));
+        // Запускаем сразу без проверки ориентации
         checkOrientation(true);
     </script>
 </body>
