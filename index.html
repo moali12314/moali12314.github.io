@@ -51,6 +51,11 @@
             if (tg.disableVerticalSwipes) {
                 tg.disableVerticalSwipes();
             }
+            // Скрываем MainButton и SecondaryButton для удаления bottom bar
+            tg.MainButton.hide();
+            if (tg.SecondaryButton) {
+                tg.SecondaryButton.hide();
+            }
             // Пытаемся fullscreen сразу
             requestFullscreenOnInteraction();
             // Слушаем события fullscreen
@@ -121,7 +126,7 @@
                     let originalMapWidth = mapImg.width;
                     let originalMapHeight = mapImg.height;
                     if (isMobile) {
-                        const scale = Math.min(SCREEN_WIDTH / originalMapWidth, SCREEN_HEIGHT / originalMapHeight) * 0.8; // Уменьшили масштаб до 80% для мобильных
+                        const scale = Math.min(SCREEN_WIDTH / originalMapWidth, SCREEN_HEIGHT / originalMapHeight) * 0.7; // Уменьшили масштаб до 70% для мобильных, чтобы карта и персонаж были меньше
                         MAP_WIDTH = originalMapWidth * scale;
                         MAP_HEIGHT = originalMapHeight * scale;
                     } else {
@@ -278,7 +283,7 @@
             if (charLoaded) {
                 ctx.drawImage(charImg, screenCharX, screenCharY, charWidth, charHeight);
             } else {
-                ctx.fillStyle = 'red';
+                ctx.fillStyle = 'blue'; // Изменили на синий, если персонаж не загружен
                 ctx.fillRect(screenCharX, screenCharY, charWidth, charHeight);
             }
             // Джойстик визуализация
