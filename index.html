@@ -2,260 +2,266 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Soul Knight Base - Full Map View</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Soul Knight Base</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-       
-        body {
-            margin: 0;
-            overflow: hidden;
-            background: black;
-            position: fixed;
-            width: 100%;
-            height: 100%;
-        }
-       
-        canvas {
-            display: block;
-            width: 100%;
-            height: 100%;
-            touch-action: none;
+        body { margin: 0; overflow: hidden; background: black; }
+        canvas { display: none; width: 100%; height: 100%; touch-action: none; }
+        #orientationMessage {
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
             position: fixed;
             top: 0;
             left: 0;
-            object-fit: contain; /* Сохраняем пропорции, но гарантируем что всё видно */
+            width: 100%;
+            height: 100vh;
+            color: white;
+            font-size: 24px;
+            text-align: center;
             background: black;
+            z-index: 1000;
         }
-        #settings {
-            position: absolute;
+        #rotateButton {
+            margin-top: 20px;
+            padding: 10px 20px;
+            font-size: 18px;
+            cursor: pointer;
+        }
+        #settingsBtn {
+            position: fixed;
             top: 10px;
             right: 10px;
-            z-index: 10;
+            z-index: 1001;
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
             color: white;
-            background: rgba(0,0,0,0.5);
-            padding: 10px;
-            border-radius: 5px;
-            font-size: 16px;
+            font-size: 24px;
+            cursor: pointer;
+            padding: 5px;
+            border-radius: 50%;
         }
-        #settings label {
-            margin-right: 5px;
+        #settingsPanel {
+            display: none;
+            position: fixed;
+            top: 50px;
+            right: 10px;
+            z-index: 1001;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            width: 200px;
         }
-        #settings input {
-            vertical-align: middle;
+        #settingsPanel label {
+            display: block;
+            margin-bottom: 10px;
         }
     </style>
 </head>
 <body>
+    <div id="orientationMessage">Переверните устройство в горизонтальное положение для игры.</div>
     <canvas id="gameCanvas"></canvas>
-    <div id="settings">
-        <label for="zoomSlider">Отдаленность:</label>
-        <input type="range" id="zoomSlider" min="0.5" max="3" step="0.1" value="1">
-        <span id="zoomDisplay">1.0x</span>
+    <button id="settingsBtn">⚙️</button>
+    <div id="settingsPanel">
+        <label>Отдаленность:
+            <input type="range" id="zoomSlider" min="0.5" max="3" step="0.1" value="1">
+            <span id="zoomValue">1.0</span>
+        </label>
     </div>
     <script>
-        // Интеграция с Telegram Web App
+        // Интеграция с Telegram Web App — максимально возможное скрытие/прозрачность header и bottom bar
         let isTelegram = false;
         let tg;
+        let fullscreenRequested = false;
         if (window.Telegram && window.Telegram.WebApp) {
             isTelegram = true;
             tg = window.Telegram.WebApp;
             tg.ready();
-            tg.expand();
+            tg.expand(); // Расширяем по высоте (важно для всех версий)
+            tg.disableClosingConfirmation(); // Отключаем подтверждение закрытия (с Bot API 6.2+)
            
+            // Проверяем версию Bot API для поддержки методов
             const tgVersion = parseFloat(tg.version) || 0;
            
+            // Устанавливаем цвет header для слияния/невидимости (с Bot API 6.1+)
             if (tgVersion >= 6.1) {
-                tg.setHeaderColor('bg_color');
-                tg.setBackgroundColor('#000000');
+                tg.setHeaderColor('bg_color'); // Сливаем с фоном, делая header невидимым
+                tg.setBackgroundColor('#000000'); // Черный фон
             }
            
+            // Для bottom bar: устанавливаем цвет и скрываем кнопки (с Bot API 7.10+ для setBottomBarColor и SecondaryButton)
             if (tgVersion >= 7.10) {
-                tg.setBottomBarColor('bg_color');
+                tg.setBottomBarColor('bg_color'); // Сливаем bottom bar с фоном для невидимости
             }
-            tg.MainButton.hide();
+            tg.MainButton.hide(); // Скрываем MainButton (с Bot API 6.1+), это может скрыть bottom bar если он пустой
+            if (tg.SecondaryButton && tgVersion >= 7.10) {
+                tg.SecondaryButton.hide(); // Скрываем SecondaryButton
+            }
            
+            // Отключаем вертикальные свайпы (с Bot API 7.7+), чтобы не тянуть вниз и не показывать header
             if (tgVersion >= 7.7 && tg.disableVerticalSwipes) {
                 tg.disableVerticalSwipes();
             }
+           
+            // Пытаемся fullscreen (с Bot API 8.0+), где header становится transparent
+            const tryRequestFullscreen = () => {
+                if (tgVersion >= 8.0 && tg.requestFullscreen) {
+                    tg.requestFullscreen()
+                        .then(() => {
+                            console.log("Fullscreen enabled via Telegram API");
+                            tg.expand(); // Повторно expand после fullscreen
+                        })
+                        .catch(err => {
+                            console.log("Telegram fullscreen failed:", err);
+                            // Fallback на браузерный fullscreen
+                            if (document.documentElement.requestFullscreen) {
+                                document.documentElement.requestFullscreen({ navigationUI: "hide" }).catch(fallbackErr => console.log("Browser fullscreen failed:", fallbackErr));
+                            }
+                        });
+                } else {
+                    // Fallback для старых версий: браузерный fullscreen
+                    if (document.documentElement.requestFullscreen) {
+                        document.documentElement.requestFullscreen({ navigationUI: "hide" }).catch(err => console.log("Fullscreen failed:", err));
+                    }
+                }
+            };
+           
+            // Слушаем события fullscreen
+            if (tgVersion >= 8.0) {
+                tg.onEvent('fullscreenChanged', () => {
+                    if (tg.isFullscreen) {
+                        console.log("Entered fullscreen mode");
+                    } else {
+                        console.log("Exited fullscreen mode");
+                        // Повторно запросить, если вышел
+                        if (!fullscreenRequested) tryRequestFullscreen();
+                    }
+                });
+                tg.onEvent('fullscreenFailed', (error) => {
+                    console.log("Fullscreen failed:", error);
+                    // Fallback на браузерный fullscreen при ошибке
+                    if (document.documentElement.requestFullscreen) {
+                        document.documentElement.requestFullscreen({ navigationUI: "hide" }).catch(() => {});
+                    }
+                });
+            }
+           
+            // Запрашиваем fullscreen при первом взаимодействии
+            const requestFullscreenOnInteraction = () => {
+                if (fullscreenRequested) return;
+                fullscreenRequested = true;
+                tryRequestFullscreen();
+            };
+           
+        } else {
+            // Если не в Telegram, сразу пытаемся fullscreen с скрытием навигации
+            if (document.documentElement.requestFullscreen) {
+                document.documentElement.requestFullscreen({ navigationUI: "hide" }).catch(err => console.log("Fullscreen failed:", err));
+            }
         }
-       
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
-       
-        // Размеры экрана
+        const messageDiv = document.getElementById('orientationMessage');
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || isTelegram;
         let SCREEN_WIDTH = window.innerWidth;
         let SCREEN_HEIGHT = window.innerHeight;
-       
-        // Размеры карты (оригинальные)
-        const MAP_WIDTH = 800;
-        const MAP_HEIGHT = 600;
-       
-        // Базовый масштаб
-        let baseScale;
-       
-        // Коэффициент отдаленности (зума)
-        let zoom = 1;
-       
-        // Камера
-        let cameraX = 0;
-        let cameraY = 0;
-       
-        // Персонаж
-        let charImg = null;
-        const CHAR_SIZE = 50; // базовый размер персонажа в пикселях карты
-       
-        let charX = MAP_WIDTH / 2;
-        let charY = MAP_HEIGHT / 2;
-        let charSpeed = 300; // скорость в единицах карты в секунду
-       
-        // Управление
+        let mapImg, charImg, mapLoaded = false, charLoaded = false;
+        let MAP_WIDTH = 800, MAP_HEIGHT = 600;
+        let charWidth = 50, charHeight = 50;
+        let charX, charY;
+        let charSpeed = 500; // px/s
+        let cameraX = 0, cameraY = 0;
         const keys = {};
+        window.addEventListener('keydown', (e) => { keys[e.key.toLowerCase()] = true; });
+        window.addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
+        // Динамический джойстик (активируется в любой точке левой половины)
         let joystick = {
             active: false,
-            centerX: 0, centerY: 0,
-            currentX: 0, currentY: 0,
+            centerX: 0,
+            centerY: 0,
+            currentX: 0,
+            currentY: 0,
             touchId: null,
             radius: 60
         };
-       
         let lastTime = 0;
-        let mapImage = null;
-       
-        // Создаем карту программно (так как map.png может не быть)
-        function createMapImage() {
-            const offscreenCanvas = document.createElement('canvas');
-            offscreenCanvas.width = MAP_WIDTH;
-            offscreenCanvas.height = MAP_HEIGHT;
-            const offCtx = offscreenCanvas.getContext('2d');
-           
-            // Рисуем сетку (пол)
-            offCtx.fillStyle = '#2a2a2a';
-            offCtx.fillRect(0, 0, MAP_WIDTH, MAP_HEIGHT);
-           
-            // Клетки 50x50
-            offCtx.strokeStyle = '#444';
-            offCtx.lineWidth = 1;
-            for (let x = 0; x <= MAP_WIDTH; x += 50) {
-                offCtx.beginPath();
-                offCtx.moveTo(x, 0);
-                offCtx.lineTo(x, MAP_HEIGHT);
-                offCtx.stroke();
-            }
-            for (let y = 0; y <= MAP_HEIGHT; y += 50) {
-                offCtx.beginPath();
-                offCtx.moveTo(0, y);
-                offCtx.lineTo(MAP_WIDTH, y);
-                offCtx.stroke();
-            }
-           
-            // Стены по краям
-            offCtx.fillStyle = '#654321';
-            offCtx.fillRect(0, 0, MAP_WIDTH, 20); // верх
-            offCtx.fillRect(0, MAP_HEIGHT-20, MAP_WIDTH, 20); // низ
-            offCtx.fillRect(0, 0, 20, MAP_HEIGHT); // лево
-            offCtx.fillRect(MAP_WIDTH-20, 0, 20, MAP_HEIGHT); // право
-           
-            // Несколько препятствий
-            offCtx.fillStyle = '#8B4513';
-            offCtx.fillRect(200, 150, 100, 100);
-            offCtx.fillRect(500, 350, 120, 80);
-            offCtx.fillRect(300, 400, 80, 150);
-           
-            // Отметка центра
-            offCtx.fillStyle = '#ff0';
-            offCtx.beginPath();
-            offCtx.arc(MAP_WIDTH/2, MAP_HEIGHT/2, 10, 0, Math.PI*2);
-            offCtx.fill();
-           
-            return offscreenCanvas;
+        let zoom = 1;
+        async function checkOrientation(andStartGame = false) {
+            SCREEN_WIDTH = window.innerWidth;
+            SCREEN_HEIGHT = window.innerHeight;
+            canvas.width = SCREEN_WIDTH;
+            canvas.height = SCREEN_HEIGHT;
+            // Убрали проверку на landscape, запускаем сразу без сообщения о повороте
+            messageDiv.style.display = 'none';
+            canvas.style.display = 'block';
+            if (andStartGame) await startGame();
         }
-       
-        // Создаем персонажа
-        function createCharacterImage() {
-            const offscreenCanvas = document.createElement('canvas');
-            offscreenCanvas.width = CHAR_SIZE;
-            offscreenCanvas.height = CHAR_SIZE;
-            const offCtx = offscreenCanvas.getContext('2d');
-           
-            // Рисуем рыцаря
-            offCtx.fillStyle = '#3498db';
-            offCtx.fillRect(0, 0, CHAR_SIZE, CHAR_SIZE);
-           
-            // Глаза
-            offCtx.fillStyle = 'white';
-            offCtx.fillRect(10, 15, 10, 10);
-            offCtx.fillRect(30, 15, 10, 10);
-           
-            // Меч
-            offCtx.fillStyle = 'gray';
-            offCtx.fillRect(45, 10, 20, 5);
-           
-            return offscreenCanvas;
-        }
-       
-        // Инициализация
-        function init() {
-            // Создаем карту и персонажа
-            mapImage = createMapImage();
-            charImg = createCharacterImage();
-           
-            // Обновляем размеры экрана
-            updateDimensions();
-           
-            // Настройки отдаленности
-            const zoomSlider = document.getElementById('zoomSlider');
-            const zoomDisplay = document.getElementById('zoomDisplay');
-            zoomDisplay.textContent = '1.0x';
-           
-            zoomSlider.addEventListener('input', (e) => {
-                zoom = parseFloat(e.target.value);
-                zoomDisplay.textContent = `${zoom.toFixed(1)}x`;
+        async function startGame() {
+            if (mapLoaded && charLoaded) return;
+            mapImg = new Image();
+            mapImg.src = 'map.png';
+            await new Promise(resolve => {
+                mapImg.onload = () => {
+                    MAP_WIDTH = mapImg.width;
+                    MAP_HEIGHT = mapImg.height;
+                    mapLoaded = true;
+                    resolve();
+                };
+                mapImg.onerror = resolve;
             });
-           
-            // Устанавливаем обработчики событий
-            window.addEventListener('keydown', (e) => { keys[e.key.toLowerCase()] = true; });
-            window.addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
-           
-            // Мобильное управление
-            canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
-            canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
-            canvas.addEventListener('touchend', handleTouchEnd, { passive: false });
-           
-            // Запускаем игровой цикл
+            charImg = new Image();
+            charImg.src = 'character.png';
+            await new Promise(resolve => {
+                charImg.onload = () => {
+                    charWidth = charImg.width;
+                    charHeight = charImg.height;
+                    charLoaded = true;
+                    resolve();
+                };
+                charImg.onerror = resolve;
+            });
+            charX = MAP_WIDTH / 2 - charWidth / 2;
+            charY = MAP_HEIGHT / 2 - charHeight / 2;
+            if (isMobile) {
+                canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+                canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+                canvas.addEventListener('touchend', handleTouchEnd, { passive: false });
+                canvas.addEventListener('touchcancel', handleTouchEnd, { passive: false });
+            } else {
+                // Для ПК: разворачиваем на весь экран при клике на canvas
+                canvas.addEventListener('click', requestFullscreenOnInteraction);
+            }
+            // Добавляем слушатель для первого взаимодействия на мобильном/Telegram для fullscreen
+            canvas.addEventListener('touchstart', requestFullscreenOnInteraction, { once: true });
+            canvas.addEventListener('click', requestFullscreenOnInteraction, { once: true });
+            // Инициализируем камеру в центре карты сразу
+            cameraX = (MAP_WIDTH - SCREEN_WIDTH) / 2;
+            cameraY = (MAP_HEIGHT - SCREEN_HEIGHT) / 2;
+            cameraX = Math.max(0, Math.min(cameraX, MAP_WIDTH - SCREEN_WIDTH));
+            cameraY = Math.max(0, Math.min(cameraY, MAP_HEIGHT - SCREEN_HEIGHT));
             lastTime = performance.now();
             requestAnimationFrame(gameLoop);
         }
-       
-        // Обновление размеров экрана и расчет базового масштаба
-        function updateDimensions() {
-            SCREEN_WIDTH = window.innerWidth;
-            SCREEN_HEIGHT = window.innerHeight;
-           
-            canvas.width = SCREEN_WIDTH;
-            canvas.height = SCREEN_HEIGHT;
-           
-            // Вычисляем базовый масштаб так, чтобы карта целиком помещалась на экран при zoom=1
-            const scaleX = SCREEN_WIDTH / MAP_WIDTH;
-            const scaleY = SCREEN_HEIGHT / MAP_HEIGHT;
-           
-            baseScale = Math.min(scaleX, scaleY);
+        function requestFullscreenOnInteraction() {
+            if (fullscreenRequested) return;
+            fullscreenRequested = true;
+            if (isTelegram) {
+                tryRequestFullscreen(); // Используем функцию с проверкой версии
+            } else if (document.documentElement.requestFullscreen) {
+                document.documentElement.requestFullscreen({ navigationUI: "hide" })
+                    .catch(err => console.log("Fullscreen failed:", err));
+            }
         }
-       
         function handleTouchStart(e) {
             e.preventDefault();
             if (joystick.active) return;
-           
             for (let touch of e.changedTouches) {
                 const rect = canvas.getBoundingClientRect();
                 const touchX = touch.clientX - rect.left;
                 const touchY = touch.clientY - rect.top;
-               
-                // Активируем джойстик в левой половине экрана
+                // Активация только в левой половине экрана
                 if (touchX < SCREEN_WIDTH / 2) {
                     joystick.active = true;
                     joystick.centerX = touchX;
@@ -267,11 +273,9 @@
                 }
             }
         }
-       
         function handleTouchMove(e) {
             e.preventDefault();
             if (!joystick.active) return;
-           
             for (let touch of e.touches) {
                 if (touch.identifier === joystick.touchId) {
                     const rect = canvas.getBoundingClientRect();
@@ -281,154 +285,131 @@
                 }
             }
         }
-       
         function handleTouchEnd(e) {
             e.preventDefault();
             joystick.active = false;
             joystick.touchId = null;
         }
-       
         function gameLoop(timestamp) {
             const delta = Math.min((timestamp - lastTime) / 1000, 0.1);
             lastTime = timestamp;
-           
-            // Движение персонажа
-            let moveX = 0, moveY = 0;
-           
+            const moveDelta = charSpeed * delta;
             // Клавиатура
-            if (keys['w'] || keys['arrowup']) moveY -= 1;
-            if (keys['s'] || keys['arrowdown']) moveY += 1;
-            if (keys['a'] || keys['arrowleft']) moveX -= 1;
-            if (keys['d'] || keys['arrowright']) moveX += 1;
-           
+            if (keys['w'] || keys['arrowup']) charY -= moveDelta;
+            if (keys['s'] || keys['arrowdown']) charY += moveDelta;
+            if (keys['a'] || keys['arrowleft']) charX -= moveDelta;
+            if (keys['d'] || keys['arrowright']) charX += moveDelta;
             // Джойстик
             if (joystick.active) {
                 let dx = joystick.currentX - joystick.centerX;
                 let dy = joystick.currentY - joystick.centerY;
                 let dist = Math.hypot(dx, dy);
-               
-                if (dist > 5) { // мертвая зона
-                    moveX = dx / dist;
-                    moveY = dy / dist;
+                if (dist > 0.01) {
+                    dx /= dist;
+                    dy /= dist;
                     const power = Math.min(dist / joystick.radius, 1);
-                    moveX *= power;
-                    moveY *= power;
+                    charX += dx * moveDelta * power * 1.1;
+                    charY += dy * moveDelta * power * 1.1;
                 }
             }
-           
-            // Нормализуем диагональное движение
-            if (moveX !== 0 || moveY !== 0) {
-                const len = Math.hypot(moveX, moveY);
-                moveX /= len;
-                moveY /= len;
-               
-                // Применяем движение
-                charX += moveX * charSpeed * delta;
-                charY += moveY * charSpeed * delta;
-            }
-           
-            // Границы карты (с учетом размера персонажа)
-            charX = Math.max(CHAR_SIZE/2, Math.min(charX, MAP_WIDTH - CHAR_SIZE/2));
-            charY = Math.max(CHAR_SIZE/2, Math.min(charY, MAP_HEIGHT - CHAR_SIZE/2));
-           
-            // Вычисляем текущий масштаб
+            // Границы
+            charX = Math.max(0, Math.min(charX, MAP_WIDTH - charWidth));
+            charY = Math.max(0, Math.min(charY, MAP_HEIGHT - charHeight));
+            // Вычисляем базовый масштаб
+            const baseScale = Math.min(SCREEN_WIDTH / MAP_WIDTH, SCREEN_HEIGHT / MAP_HEIGHT);
             const currentScale = baseScale * zoom;
-           
             // Вычисляем размер видимой области в координатах карты
             const viewWidth = SCREEN_WIDTH / currentScale;
             const viewHeight = SCREEN_HEIGHT / currentScale;
-           
-            let sx, sy, sw, sh, dx, dy, dw, dh;
-           
-            if (viewWidth >= MAP_WIDTH || viewHeight >= MAP_HEIGHT) {
-                // Карта помещается целиком: центрируем
-                sw = MAP_WIDTH;
-                sh = MAP_HEIGHT;
+            // Камера - мгновенное следование с улучшенной централизацией (но только если карта больше экрана)
+            if (viewWidth < MAP_WIDTH || viewHeight < MAP_HEIGHT) {
+                let desiredCameraX = charX + charWidth / 2 - viewWidth / 2;
+                let desiredCameraY = charY + charHeight / 2 - viewHeight / 2;
+                const lerpFactor = 1;
+                cameraX += (desiredCameraX - cameraX) * lerpFactor;
+                cameraY += (desiredCameraY - cameraY) * lerpFactor;
+                cameraX = Math.max(0, Math.min(cameraX, MAP_WIDTH - viewWidth));
+                cameraY = Math.max(0, Math.min(cameraY, MAP_HEIGHT - viewHeight));
+            } else {
+                cameraX = 0;
+                cameraY = 0;
+            }
+            let sx = cameraX;
+            let sy = cameraY;
+            let sw = viewWidth;
+            let sh = viewHeight;
+            let dx = 0;
+            let dy = 0;
+            let dw = SCREEN_WIDTH;
+            let dh = SCREEN_HEIGHT;
+            if (viewWidth >= MAP_WIDTH && viewHeight >= MAP_HEIGHT) {
                 sx = 0;
                 sy = 0;
+                sw = MAP_WIDTH;
+                sh = MAP_HEIGHT;
                 dw = MAP_WIDTH * currentScale;
                 dh = MAP_HEIGHT * currentScale;
                 dx = (SCREEN_WIDTH - dw) / 2;
                 dy = (SCREEN_HEIGHT - dh) / 2;
-            } else {
-                // Карта больше экрана: следуем за персонажем с камерой
-                const desiredCameraX = charX - viewWidth / 2;
-                const desiredCameraY = charY - viewHeight / 2;
-                cameraX = Math.max(0, Math.min(desiredCameraX, MAP_WIDTH - viewWidth));
-                cameraY = Math.max(0, Math.min(desiredCameraY, MAP_HEIGHT - viewHeight));
-                sx = cameraX;
-                sy = cameraY;
-                sw = viewWidth;
-                sh = viewHeight;
-                dx = 0;
-                dy = 0;
-                dw = SCREEN_WIDTH;
-                dh = SCREEN_HEIGHT;
             }
-           
             // Отрисовка
             ctx.clearRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
-           
-            // Рисуем карту
-            if (mapImage) {
-                ctx.drawImage(mapImage, sx, sy, sw, sh, dx, dy, dw, dh);
+            if (mapLoaded) {
+                ctx.drawImage(mapImg, sx, sy, sw, sh, dx, dy, dw, dh);
+            } else {
+                ctx.fillStyle = 'gray';
+                ctx.fillRect(dx, dy, dw, dh);
             }
-           
-            // Рисуем персонажа
-            if (charImg) {
-                // Конвертируем координаты карты в экранные координаты
-                const screenX = dx + (charX - CHAR_SIZE/2 - sx) * currentScale;
-                const screenY = dy + (charY - CHAR_SIZE/2 - sy) * currentScale;
-                const screenSize = CHAR_SIZE * currentScale;
-               
-                ctx.drawImage(charImg, screenX, screenY, screenSize, screenSize);
+            const screenCharX = dx + (charX - sx) * currentScale;
+            const screenCharY = dy + (charY - sy) * currentScale;
+            const scaledCharWidth = charWidth * currentScale;
+            const scaledCharHeight = charHeight * currentScale;
+            if (charLoaded) {
+                ctx.drawImage(charImg, screenCharX, screenCharY, scaledCharWidth, scaledCharHeight);
+            } else {
+                ctx.fillStyle = 'yellow';
+                ctx.fillRect(screenCharX, screenCharY, scaledCharWidth, scaledCharHeight);
             }
-           
-            // Рисуем джойстик на мобильных устройствах
-            if (joystick.active) {
-                // База джойстика
-                ctx.fillStyle = 'rgba(200,200,200,0.3)';
+            // Джойстик визуализация
+            if (isMobile && joystick.active) {
+                ctx.fillStyle = 'rgba(200,200,200,0.35)';
                 ctx.beginPath();
-                ctx.arc(joystick.centerX, joystick.centerY, joystick.radius * 1.2, 0, Math.PI * 2);
+                ctx.arc(joystick.centerX, joystick.centerY, joystick.radius * 1.6, 0, Math.PI * 2);
                 ctx.fill();
-               
-                // Ручка джойстика
-                let jdx = joystick.currentX - joystick.centerX;
-                let jdy = joystick.currentY - joystick.centerY;
-                let jdist = Math.hypot(jdx, jdy);
-               
-                if (jdist > joystick.radius) {
-                    jdx = jdx / jdist * joystick.radius;
-                    jdy = jdy / jdist * joystick.radius;
+                let dx = joystick.currentX - joystick.centerX;
+                let dy = joystick.currentY - joystick.centerY;
+                let dist = Math.hypot(dx, dy);
+                if (dist > joystick.radius) {
+                    dx = dx / dist * joystick.radius;
+                    dy = dy / dist * joystick.radius;
                 }
-               
-                ctx.fillStyle = 'rgba(150,150,150,0.8)';
+                ctx.fillStyle = 'rgba(100,100,100,0.75)';
                 ctx.beginPath();
-                ctx.arc(joystick.centerX + jdx, joystick.centerY + jdy, joystick.radius * 0.5, 0, Math.PI * 2);
+                ctx.arc(joystick.centerX + dx, joystick.centerY + dy, joystick.radius * 0.7, 0, Math.PI * 2);
                 ctx.fill();
             }
-           
             requestAnimationFrame(gameLoop);
         }
-       
-        // Обработка изменения размера экрана
-        window.addEventListener('resize', () => {
-            updateDimensions();
-        });
-       
-        window.addEventListener('orientationchange', () => {
-            setTimeout(updateDimensions, 100);
-        });
-       
-        // Запуск игры
-        init();
-       
-        // Попытка fullscreen на ПК
-        if (!/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
-            if (document.documentElement.requestFullscreen) {
-                document.documentElement.requestFullscreen({ navigationUI: "hide" }).catch(() => {});
-            }
+        window.addEventListener('resize', () => checkOrientation(true));
+        window.addEventListener('orientationchange', () => checkOrientation(true));
+        // Запускаем сразу без проверки ориентации
+        checkOrientation(true);
+        // Для ПК: пытаемся fullscreen сразу, если не мобильное
+        if (!isMobile && document.documentElement.requestFullscreen) {
+            document.documentElement.requestFullscreen({ navigationUI: "hide" }).catch(err => console.log("Initial fullscreen failed:", err));
         }
+        // Настройки
+        const settingsBtn = document.getElementById('settingsBtn');
+        const settingsPanel = document.getElementById('settingsPanel');
+        const zoomSlider = document.getElementById('zoomSlider');
+        const zoomValue = document.getElementById('zoomValue');
+        settingsBtn.addEventListener('click', () => {
+            settingsPanel.style.display = settingsPanel.style.display === 'block' ? 'none' : 'block';
+        });
+        zoomSlider.addEventListener('input', () => {
+            zoom = parseFloat(zoomSlider.value);
+            zoomValue.textContent = zoom.toFixed(1);
+        });
     </script>
 </body>
 </html>
