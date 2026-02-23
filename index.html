@@ -169,7 +169,7 @@
                 mapImg.onload = () => {
                     let originalMapWidth = mapImg.width;
                     let originalMapHeight = mapImg.height;
-                    const scale = Math.max(SCREEN_WIDTH / originalMapWidth, SCREEN_HEIGHT / originalMapHeight);
+                    const scale = Math.min(SCREEN_WIDTH / originalMapWidth, SCREEN_HEIGHT / originalMapHeight);
                     MAP_WIDTH = originalMapWidth * scale;
                     MAP_HEIGHT = originalMapHeight * scale;
                     mapLoaded = true;
@@ -285,14 +285,19 @@
             // Границы
             charX = Math.max(0, Math.min(charX, MAP_WIDTH - charWidth));
             charY = Math.max(0, Math.min(charY, MAP_HEIGHT - charHeight));
-            // Камера - мгновенное следование с улучшенной централизацией
-            let desiredCameraX = charX + charWidth / 2 - SCREEN_WIDTH / 2;
-            let desiredCameraY = charY + charHeight / 2 - SCREEN_HEIGHT / 2;
-            const lerpFactor = 1; // Мгновенное (можно уменьшить для сглаживания, но по умолчанию 1)
-            cameraX += (desiredCameraX - cameraX) * lerpFactor;
-            cameraY += (desiredCameraY - cameraY) * lerpFactor;
-            cameraX = Math.max(0, Math.min(cameraX, MAP_WIDTH - SCREEN_WIDTH));
-            cameraY = Math.max(0, Math.min(cameraY, MAP_HEIGHT - SCREEN_HEIGHT));
+            // Камера - мгновенное следование с улучшенной централизацией (но только если карта больше экрана)
+            if (MAP_WIDTH > SCREEN_WIDTH || MAP_HEIGHT > SCREEN_HEIGHT) {
+                let desiredCameraX = charX + charWidth / 2 - SCREEN_WIDTH / 2;
+                let desiredCameraY = charY + charHeight / 2 - SCREEN_HEIGHT / 2;
+                const lerpFactor = 1;
+                cameraX += (desiredCameraX - cameraX) * lerpFactor;
+                cameraY += (desiredCameraY - cameraY) * lerpFactor;
+                cameraX = Math.max(0, Math.min(cameraX, MAP_WIDTH - SCREEN_WIDTH));
+                cameraY = Math.max(0, Math.min(cameraY, MAP_HEIGHT - SCREEN_HEIGHT));
+            } else {
+                cameraX = 0;
+                cameraY = 0;
+            }
             // Если карта меньше экрана, центрируем её строго
             const offsetX = MAP_WIDTH < SCREEN_WIDTH ? (SCREEN_WIDTH - MAP_WIDTH) / 2 : -cameraX;
             const offsetY = MAP_HEIGHT < SCREEN_HEIGHT ? (SCREEN_HEIGHT - MAP_HEIGHT) / 2 : -cameraY;
@@ -309,7 +314,7 @@
             if (charLoaded) {
                 ctx.drawImage(charImg, screenCharX, screenCharY, charWidth, charHeight);
             } else {
-                ctx.fillStyle = 'green';
+                ctx.fillStyle = 'yellow';
                 ctx.fillRect(screenCharX, screenCharY, charWidth, charHeight);
             }
             // Джойстик визуализация
