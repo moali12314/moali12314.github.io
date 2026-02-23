@@ -45,16 +45,16 @@
             tg.ready();
             tg.expand(); // Расширяем по высоте (важно для всех версий)
             tg.disableClosingConfirmation(); // Отключаем подтверждение закрытия (с Bot API 6.2+)
-            
+           
             // Проверяем версию Bot API для поддержки методов
             const tgVersion = parseFloat(tg.version) || 0;
-            
+           
             // Устанавливаем цвет header для слияния/невидимости (с Bot API 6.1+)
             if (tgVersion >= 6.1) {
                 tg.setHeaderColor('bg_color'); // Сливаем с фоном, делая header невидимым
                 tg.setBackgroundColor('#000000'); // Черный фон
             }
-            
+           
             // Для bottom bar: устанавливаем цвет и скрываем кнопки (с Bot API 7.10+ для setBottomBarColor и SecondaryButton)
             if (tgVersion >= 7.10) {
                 tg.setBottomBarColor('bg_color'); // Сливаем bottom bar с фоном для невидимости
@@ -63,12 +63,12 @@
             if (tg.SecondaryButton && tgVersion >= 7.10) {
                 tg.SecondaryButton.hide(); // Скрываем SecondaryButton
             }
-            
+           
             // Отключаем вертикальные свайпы (с Bot API 7.7+), чтобы не тянуть вниз и не показывать header
             if (tgVersion >= 7.7 && tg.disableVerticalSwipes) {
                 tg.disableVerticalSwipes();
             }
-            
+           
             // Пытаемся fullscreen (с Bot API 8.0+), где header становится transparent
             const tryRequestFullscreen = () => {
                 if (tgVersion >= 8.0 && tg.requestFullscreen) {
@@ -91,7 +91,7 @@
                     }
                 }
             };
-            
+           
             // Слушаем события fullscreen
             if (tgVersion >= 8.0) {
                 tg.onEvent('fullscreenChanged', () => {
@@ -111,14 +111,14 @@
                     }
                 });
             }
-            
+           
             // Запрашиваем fullscreen при первом взаимодействии
             const requestFullscreenOnInteraction = () => {
                 if (fullscreenRequested) return;
                 fullscreenRequested = true;
                 tryRequestFullscreen();
             };
-            
+           
         } else {
             // Если не в Telegram, сразу пытаемся fullscreen с скрытием навигации
             if (document.documentElement.requestFullscreen) {
@@ -170,7 +170,7 @@
                     let originalMapWidth = mapImg.width;
                     let originalMapHeight = mapImg.height;
                     if (isMobile) {
-                        const scale = Math.min(SCREEN_WIDTH / originalMapWidth, SCREEN_HEIGHT / originalMapHeight) * 0.7; // Уменьшили масштаб до 70% для мобильных
+                        const scale = Math.min(SCREEN_WIDTH / originalMapWidth, SCREEN_HEIGHT / originalMapHeight) * 0.5; // Уменьшили масштаб до 50% для мобильных (было 70%)
                         MAP_WIDTH = originalMapWidth * scale;
                         MAP_HEIGHT = originalMapHeight * scale;
                     } else {
@@ -190,8 +190,8 @@
                     let originalCharHeight = charImg.height;
                     if (isMobile) {
                         const mapScale = MAP_WIDTH / mapImg.width;
-                        charWidth = originalCharWidth * mapScale;
-                        charHeight = originalCharHeight * mapScale;
+                        charWidth = originalCharWidth * mapScale * 0.8; // Дополнительно уменьшили персонажа до 80% от масштаба карты
+                        charHeight = originalCharHeight * mapScale * 0.8;
                         charSpeed *= mapScale;
                     } else {
                         charWidth = originalCharWidth;
@@ -216,6 +216,11 @@
             // Добавляем слушатель для первого взаимодействия на мобильном/Telegram для fullscreen
             canvas.addEventListener('touchstart', requestFullscreenOnInteraction, { once: true });
             canvas.addEventListener('click', requestFullscreenOnInteraction, { once: true });
+            // Инициализируем камеру в центре карты сразу
+            cameraX = (MAP_WIDTH - SCREEN_WIDTH) / 2;
+            cameraY = (MAP_HEIGHT - SCREEN_HEIGHT) / 2;
+            cameraX = Math.max(0, Math.min(cameraX, MAP_WIDTH - SCREEN_WIDTH));
+            cameraY = Math.max(0, Math.min(cameraY, MAP_HEIGHT - SCREEN_HEIGHT));
             lastTime = performance.now();
             requestAnimationFrame(gameLoop);
         }
@@ -290,28 +295,27 @@
             // Границы
             charX = Math.max(0, Math.min(charX, MAP_WIDTH - charWidth));
             charY = Math.max(0, Math.min(charY, MAP_HEIGHT - charHeight));
-            // Камера - мгновенное следование
+            // Камера - мгновенное следование с улучшенной централизацией
             let desiredCameraX = charX + charWidth / 2 - SCREEN_WIDTH / 2;
             let desiredCameraY = charY + charHeight / 2 - SCREEN_HEIGHT / 2;
-            const lerpFactor = 1;
+            const lerpFactor = 1; // Мгновенное (можно уменьшить для сглаживания, но по умолчанию 1)
             cameraX += (desiredCameraX - cameraX) * lerpFactor;
             cameraY += (desiredCameraY - cameraY) * lerpFactor;
             cameraX = Math.max(0, Math.min(cameraX, MAP_WIDTH - SCREEN_WIDTH));
             cameraY = Math.max(0, Math.min(cameraY, MAP_HEIGHT - SCREEN_HEIGHT));
-            const offsetX = MAP_WIDTH < SCREEN_WIDTH ? (SCREEN_WIDTH - MAP_WIDTH) / 2 : 0;
-            const offsetY = MAP_HEIGHT < SCREEN_HEIGHT ? (SCREEN_HEIGHT - MAP_HEIGHT) / 2 : 0;
+            // Если карта меньше экрана, центрируем её строго
+            const offsetX = MAP_WIDTH < SCREEN_WIDTH ? (SCREEN_WIDTH - MAP_WIDTH) / 2 : -cameraX;
+            const offsetY = MAP_HEIGHT < SCREEN_HEIGHT ? (SCREEN_HEIGHT - MAP_HEIGHT) / 2 : -cameraY;
             // Отрисовка
             ctx.clearRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
-            const mapDrawX = offsetX - cameraX;
-            const mapDrawY = offsetY - cameraY;
             if (mapLoaded) {
-                ctx.drawImage(mapImg, mapDrawX, mapDrawY, MAP_WIDTH, MAP_HEIGHT);
+                ctx.drawImage(mapImg, offsetX, offsetY, MAP_WIDTH, MAP_HEIGHT);
             } else {
                 ctx.fillStyle = 'gray';
-                ctx.fillRect(mapDrawX, mapDrawY, MAP_WIDTH, MAP_HEIGHT);
+                ctx.fillRect(offsetX, offsetY, MAP_WIDTH, MAP_HEIGHT);
             }
-            const screenCharX = charX + offsetX - cameraX;
-            const screenCharY = charY + offsetY - cameraY;
+            const screenCharX = charX + (MAP_WIDTH < SCREEN_WIDTH ? (SCREEN_WIDTH - MAP_WIDTH) / 2 : -cameraX);
+            const screenCharY = charY + (MAP_HEIGHT < SCREEN_HEIGHT ? (SCREEN_HEIGHT - MAP_HEIGHT) / 2 : -cameraY);
             if (charLoaded) {
                 ctx.drawImage(charImg, screenCharX, screenCharY, charWidth, charHeight);
             } else {
