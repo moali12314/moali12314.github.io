@@ -7,7 +7,7 @@
     <style>
         body { margin: 0; overflow: hidden; background: black; }
         canvas { display: none; width: 100%; height: 100%; touch-action: none; }
-        #orientationMessage {
+        #orientationMessage, #loadingMessage {
             display: none;
             flex-direction: column;
             justify-content: center;
@@ -33,23 +33,21 @@
 </head>
 <body>
     <div id="orientationMessage">Переверните устройство в горизонтальное положение для игры.</div>
+    <div id="loadingMessage">Загрузка...</div>
     <canvas id="gameCanvas"></canvas>
     <script>
         // Интеграция с Telegram Web App — максимально возможное скрытие header
         let isTelegram = false;
         let tg;
         let fullscreenRequested = false;
-
         if (window.Telegram && window.Telegram.WebApp) {
             isTelegram = true;
             tg = window.Telegram.WebApp;
             tg.ready();
             tg.expand(); // Расширяем по максимуму
             tg.disableClosingConfirmation();
-
             const tgVersion = tg.version || '0';
             const isAtLeast = (ver) => tg.isVersionAtLeast ? tg.isVersionAtLeast(ver) : parseFloat(tgVersion) >= parseFloat(ver);
-
             // Цвета для слияния
             tg.setBackgroundColor('#000000');
             if (isAtLeast('6.1')) {
@@ -58,21 +56,17 @@
             if (isAtLeast('7.10')) {
                 tg.setBottomBarColor('#000000'); // Нижняя плашка тоже чёрная
             }
-
             tg.MainButton.hide();
             if (tg.SecondaryButton && isAtLeast('7.10')) {
                 tg.SecondaryButton.hide();
             }
-
             if (isAtLeast('7.7')) {
                 tg.disableVerticalSwipes(); // Запрещаем свайп вниз
             }
-
             // Функция запроса fullscreen
             const tryRequestFullscreen = () => {
                 if (fullscreenRequested) return;
                 fullscreenRequested = true;
-
                 if (isAtLeast('8.0') && tg.requestFullscreen) {
                     tg.requestFullscreen()
                         .then(() => {
@@ -94,10 +88,8 @@
                     }
                 }
             };
-
             // Запрашиваем fullscreen СРАЗУ
             tryRequestFullscreen();
-
             // Слушаем события
             if (isAtLeast('8.0')) {
                 tg.onEvent('fullscreenChanged', () => {
@@ -110,7 +102,6 @@
                     console.log("Fullscreen ошибка:", error);
                 });
             }
-
             // Для безопасных зон (notch, status bar) — добавь отступы к canvas
             if (isAtLeast('8.0')) {
                 const updateSafeArea = () => {
@@ -122,7 +113,6 @@
                 updateSafeArea();
                 tg.onEvent('safeAreaChanged', updateSafeArea);
             }
-
             // На любое касание/клик — повторно fullscreen (на всякий случай)
             const requestOnInteraction = () => {
                 if (!fullscreenRequested) tryRequestFullscreen();
@@ -135,10 +125,10 @@
                 document.documentElement.requestFullscreen({ navigationUI: "hide" }).catch(() => {});
             }
         }
-
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
         const messageDiv = document.getElementById('orientationMessage');
+        const loadingDiv = document.getElementById('loadingMessage');
         const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || isTelegram;
         let SCREEN_WIDTH = window.innerWidth;
         let SCREEN_HEIGHT = window.innerHeight;
@@ -170,7 +160,11 @@
             // Убрали проверку на landscape, запускаем сразу без сообщения о повороте
             messageDiv.style.display = 'none';
             canvas.style.display = 'block';
-            if (andStartGame) await startGame();
+            if (andStartGame) {
+                loadingDiv.style.display = 'flex';
+                await startGame();
+                loadingDiv.style.display = 'none';
+            }
         }
         async function startGame() {
             if (mapLoaded && charLoaded) return;
@@ -181,7 +175,7 @@
                     let originalMapWidth = mapImg.width;
                     let originalMapHeight = mapImg.height;
                     if (isMobile) {
-                        const scale = Math.min(SCREEN_WIDTH / originalMapWidth, SCREEN_HEIGHT / originalMapHeight) * 0.7; // Уменьшили масштаб до 70% для мобильных
+                        const scale = Math.min(SCREEN_WIDTH / originalMapWidth, SCREEN_HEIGHT / originalMapHeight) * 0.5; // Уменьшили масштаб до 50% для мобильных, чтобы карта полностью помещалась с запасом
                         MAP_WIDTH = originalMapWidth * scale;
                         MAP_HEIGHT = originalMapHeight * scale;
                     } else {
@@ -191,7 +185,10 @@
                     mapLoaded = true;
                     resolve();
                 };
-                mapImg.onerror = resolve;
+                mapImg.onerror = () => {
+                    console.error('Ошибка загрузки карты');
+                    resolve(); // Продолжаем с fallback
+                };
             });
             charImg = new Image();
             charImg.src = 'character.png';
@@ -211,7 +208,10 @@
                     charLoaded = true;
                     resolve();
                 };
-                charImg.onerror = resolve;
+                charImg.onerror = () => {
+                    console.error('Ошибка загрузки персонажа');
+                    resolve(); // Продолжаем с fallback
+                };
             });
             charX = MAP_WIDTH / 2 - charWidth / 2;
             charY = MAP_HEIGHT / 2 - charHeight / 2;
@@ -291,7 +291,7 @@
             // Границы
             charX = Math.max(0, Math.min(charX, MAP_WIDTH - charWidth));
             charY = Math.max(0, Math.min(charY, MAP_HEIGHT - charHeight));
-            // Камера - мгновенное следование
+            // Камера - мгновенное следование (но если карта меньше экрана, камера фиксирована)
             let desiredCameraX = charX + charWidth / 2 - SCREEN_WIDTH / 2;
             let desiredCameraY = charY + charHeight / 2 - SCREEN_HEIGHT / 2;
             const lerpFactor = 1;
