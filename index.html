@@ -35,96 +35,107 @@
     <div id="orientationMessage">Переверните устройство в горизонтальное положение для игры.</div>
     <canvas id="gameCanvas"></canvas>
     <script>
-        // Интеграция с Telegram Web App — максимально возможное скрытие/прозрачность header и bottom bar
+        // Интеграция с Telegram Web App — максимально возможное скрытие header
         let isTelegram = false;
         let tg;
         let fullscreenRequested = false;
+
         if (window.Telegram && window.Telegram.WebApp) {
             isTelegram = true;
             tg = window.Telegram.WebApp;
             tg.ready();
-            tg.expand(); // Расширяем по высоте (важно для всех версий)
-            tg.disableClosingConfirmation(); // Отключаем подтверждение закрытия (с Bot API 6.2+)
-            
-            // Проверяем версию Bot API для поддержки методов
-            const tgVersion = parseFloat(tg.version) || 0;
-            
-            // Устанавливаем цвет header для слияния/невидимости (с Bot API 6.1+)
-            if (tgVersion >= 6.1) {
-                tg.setHeaderColor('bg_color'); // Сливаем с фоном, делая header невидимым
-                tg.setBackgroundColor('#000000'); // Черный фон
+            tg.expand(); // Расширяем по максимуму
+            tg.disableClosingConfirmation();
+
+            const tgVersion = tg.version || '0';
+            const isAtLeast = (ver) => tg.isVersionAtLeast ? tg.isVersionAtLeast(ver) : parseFloat(tgVersion) >= parseFloat(ver);
+
+            // Цвета для слияния
+            tg.setBackgroundColor('#000000');
+            if (isAtLeast('6.1')) {
+                tg.setHeaderColor('#000000'); // Прямой чёрный — лучше сливается, чем 'bg_color'
             }
-            
-            // Для bottom bar: устанавливаем цвет и скрываем кнопки (с Bot API 7.10+ для setBottomBarColor и SecondaryButton)
-            if (tgVersion >= 7.10) {
-                tg.setBottomBarColor('bg_color'); // Сливаем bottom bar с фоном для невидимости
+            if (isAtLeast('7.10')) {
+                tg.setBottomBarColor('#000000'); // Нижняя плашка тоже чёрная
             }
-            tg.MainButton.hide(); // Скрываем MainButton (с Bot API 6.1+), это может скрыть bottom bar если он пустой
-            if (tg.SecondaryButton && tgVersion >= 7.10) {
-                tg.SecondaryButton.hide(); // Скрываем SecondaryButton
+
+            tg.MainButton.hide();
+            if (tg.SecondaryButton && isAtLeast('7.10')) {
+                tg.SecondaryButton.hide();
             }
-            
-            // Отключаем вертикальные свайпы (с Bot API 7.7+), чтобы не тянуть вниз и не показывать header
-            if (tgVersion >= 7.7 && tg.disableVerticalSwipes) {
-                tg.disableVerticalSwipes();
+
+            if (isAtLeast('7.7')) {
+                tg.disableVerticalSwipes(); // Запрещаем свайп вниз
             }
-            
-            // Пытаемся fullscreen (с Bot API 8.0+), где header становится transparent
+
+            // Функция запроса fullscreen
             const tryRequestFullscreen = () => {
-                if (tgVersion >= 8.0 && tg.requestFullscreen) {
+                if (fullscreenRequested) return;
+                fullscreenRequested = true;
+
+                if (isAtLeast('8.0') && tg.requestFullscreen) {
                     tg.requestFullscreen()
                         .then(() => {
-                            console.log("Fullscreen enabled via Telegram API");
-                            tg.expand(); // Повторно expand после fullscreen
+                            console.log("Fullscreen включён через Telegram API");
+                            tg.expand(); // Повторно expand
+                            // В fullscreen header прозрачный — идеально для игры
                         })
                         .catch(err => {
-                            console.log("Telegram fullscreen failed:", err);
-                            // Fallback на браузерный fullscreen
+                            console.log("Fullscreen Telegram не удался:", err);
+                            // Fallback браузерный
                             if (document.documentElement.requestFullscreen) {
-                                document.documentElement.requestFullscreen({ navigationUI: "hide" }).catch(fallbackErr => console.log("Browser fullscreen failed:", fallbackErr));
+                                document.documentElement.requestFullscreen({ navigationUI: "hide" }).catch(() => {});
                             }
                         });
                 } else {
-                    // Fallback для старых версий: браузерный fullscreen
-                    if (document.documentElement.requestFullscreen) {
-                        document.documentElement.requestFullscreen({ navigationUI: "hide" }).catch(err => console.log("Fullscreen failed:", err));
-                    }
-                }
-            };
-            
-            // Слушаем события fullscreen
-            if (tgVersion >= 8.0) {
-                tg.onEvent('fullscreenChanged', () => {
-                    if (tg.isFullscreen) {
-                        console.log("Entered fullscreen mode");
-                    } else {
-                        console.log("Exited fullscreen mode");
-                        // Повторно запросить, если вышел
-                        if (!fullscreenRequested) tryRequestFullscreen();
-                    }
-                });
-                tg.onEvent('fullscreenFailed', (error) => {
-                    console.log("Fullscreen failed:", error);
-                    // Fallback на браузерный fullscreen при ошибке
+                    // Старые версии — только браузерный fullscreen
                     if (document.documentElement.requestFullscreen) {
                         document.documentElement.requestFullscreen({ navigationUI: "hide" }).catch(() => {});
                     }
+                }
+            };
+
+            // Запрашиваем fullscreen СРАЗУ
+            tryRequestFullscreen();
+
+            // Слушаем события
+            if (isAtLeast('8.0')) {
+                tg.onEvent('fullscreenChanged', () => {
+                    console.log("Fullscreen статус:", tg.isFullscreen);
+                    if (!tg.isFullscreen) {
+                        tryRequestFullscreen(); // Пытаемся вернуться
+                    }
+                });
+                tg.onEvent('fullscreenFailed', (error) => {
+                    console.log("Fullscreen ошибка:", error);
                 });
             }
-            
-            // Запрашиваем fullscreen при первом взаимодействии
-            const requestFullscreenOnInteraction = () => {
-                if (fullscreenRequested) return;
-                fullscreenRequested = true;
-                tryRequestFullscreen();
+
+            // Для безопасных зон (notch, status bar) — добавь отступы к canvas
+            if (isAtLeast('8.0')) {
+                const updateSafeArea = () => {
+                    const insetTop = tg.safeAreaInset?.top || 0;
+                    canvas.style.paddingTop = `${insetTop}px`;
+                    canvas.style.height = `calc(100% - ${insetTop}px)`;
+                    // Можно подвинуть и другие элементы, если нужно
+                };
+                updateSafeArea();
+                tg.onEvent('safeAreaChanged', updateSafeArea);
+            }
+
+            // На любое касание/клик — повторно fullscreen (на всякий случай)
+            const requestOnInteraction = () => {
+                if (!fullscreenRequested) tryRequestFullscreen();
             };
-            
+            canvas.addEventListener('touchstart', requestOnInteraction, { once: true });
+            canvas.addEventListener('click', requestOnInteraction, { once: true });
         } else {
-            // Если не в Telegram, сразу пытаемся fullscreen с скрытием навигации
+            // Не Telegram — браузерный fullscreen
             if (document.documentElement.requestFullscreen) {
-                document.documentElement.requestFullscreen({ navigationUI: "hide" }).catch(err => console.log("Fullscreen failed:", err));
+                document.documentElement.requestFullscreen({ navigationUI: "hide" }).catch(() => {});
             }
         }
+
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
         const messageDiv = document.getElementById('orientationMessage');
@@ -211,23 +222,13 @@
                 canvas.addEventListener('touchcancel', handleTouchEnd, { passive: false });
             } else {
                 // Для ПК: разворачиваем на весь экран при клике на canvas
-                canvas.addEventListener('click', requestFullscreenOnInteraction);
+                canvas.addEventListener('click', requestOnInteraction);
             }
             // Добавляем слушатель для первого взаимодействия на мобильном/Telegram для fullscreen
-            canvas.addEventListener('touchstart', requestFullscreenOnInteraction, { once: true });
-            canvas.addEventListener('click', requestFullscreenOnInteraction, { once: true });
+            canvas.addEventListener('touchstart', requestOnInteraction, { once: true });
+            canvas.addEventListener('click', requestOnInteraction, { once: true });
             lastTime = performance.now();
             requestAnimationFrame(gameLoop);
-        }
-        function requestFullscreenOnInteraction() {
-            if (fullscreenRequested) return;
-            fullscreenRequested = true;
-            if (isTelegram) {
-                tryRequestFullscreen(); // Используем функцию с проверкой версии
-            } else if (document.documentElement.requestFullscreen) {
-                document.documentElement.requestFullscreen({ navigationUI: "hide" })
-                    .catch(err => console.log("Fullscreen failed:", err));
-            }
         }
         function handleTouchStart(e) {
             e.preventDefault();
