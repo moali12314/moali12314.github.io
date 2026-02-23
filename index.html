@@ -95,10 +95,10 @@
         const MAP_WIDTH = 800;
         const MAP_HEIGHT = 600;
        
-        // Базовый масштаб для подгонки
-        let minScale;
+        // Базовый масштаб
+        let baseScale;
        
-        // Коэффициент зума (отдаленности)
+        // Коэффициент отдаленности (зума)
         let zoom = 1;
        
         // Камера
@@ -207,7 +207,7 @@
             // Обновляем размеры экрана
             updateDimensions();
            
-            // Настройки зума
+            // Настройки отдаленности
             const zoomSlider = document.getElementById('zoomSlider');
             const zoomDisplay = document.getElementById('zoomDisplay');
             zoomDisplay.textContent = '1.0x';
@@ -239,10 +239,11 @@
             canvas.width = SCREEN_WIDTH;
             canvas.height = SCREEN_HEIGHT;
            
-            // Вычисляем базовый минимальный масштаб для подгонки карты
+            // Вычисляем базовый масштаб так, чтобы карта целиком помещалась на экран при zoom=1
             const scaleX = SCREEN_WIDTH / MAP_WIDTH;
             const scaleY = SCREEN_HEIGHT / MAP_HEIGHT;
-            minScale = Math.min(scaleX, scaleY);
+           
+            baseScale = Math.min(scaleX, scaleY);
         }
        
         function handleTouchStart(e) {
@@ -330,18 +331,17 @@
             charX = Math.max(CHAR_SIZE/2, Math.min(charX, MAP_WIDTH - CHAR_SIZE/2));
             charY = Math.max(CHAR_SIZE/2, Math.min(charY, MAP_HEIGHT - CHAR_SIZE/2));
            
-            // Вычисляем текущий масштаб с учетом зума
-            const currentScale = minScale * zoom;
+            // Вычисляем текущий масштаб
+            const currentScale = baseScale * zoom;
            
             // Вычисляем размер видимой области в координатах карты
             const viewWidth = SCREEN_WIDTH / currentScale;
             const viewHeight = SCREEN_HEIGHT / currentScale;
            
-            // Параметры для drawImage
             let sx, sy, sw, sh, dx, dy, dw, dh;
            
             if (viewWidth >= MAP_WIDTH || viewHeight >= MAP_HEIGHT) {
-                // Карта меньше экрана: показываем всю карту, центрируем
+                // Карта помещается целиком: центрируем
                 sw = MAP_WIDTH;
                 sh = MAP_HEIGHT;
                 sx = 0;
@@ -351,7 +351,7 @@
                 dx = (SCREEN_WIDTH - dw) / 2;
                 dy = (SCREEN_HEIGHT - dh) / 2;
             } else {
-                // Карта больше экрана: используем камеру, фокусируем на персонаже
+                // Карта больше экрана: следуем за персонажем с камерой
                 const desiredCameraX = charX - viewWidth / 2;
                 const desiredCameraY = charY - viewHeight / 2;
                 cameraX = Math.max(0, Math.min(desiredCameraX, MAP_WIDTH - viewWidth));
@@ -376,10 +376,12 @@
            
             // Рисуем персонажа
             if (charImg) {
-                const screenCharX = (charX - sx) * currentScale + dx - (CHAR_SIZE / 2) * currentScale;
-                const screenCharY = (charY - sy) * currentScale + dy - (CHAR_SIZE / 2) * currentScale;
-                const screenCharSize = CHAR_SIZE * currentScale;
-                ctx.drawImage(charImg, screenCharX, screenCharY, screenCharSize, screenCharSize);
+                // Конвертируем координаты карты в экранные координаты
+                const screenX = dx + (charX - CHAR_SIZE/2 - sx) * currentScale;
+                const screenY = dy + (charY - CHAR_SIZE/2 - sy) * currentScale;
+                const screenSize = CHAR_SIZE * currentScale;
+               
+                ctx.drawImage(charImg, screenX, screenY, screenSize, screenSize);
             }
            
             // Рисуем джойстик на мобильных устройствах
@@ -391,18 +393,18 @@
                 ctx.fill();
                
                 // Ручка джойстика
-                let dx = joystick.currentX - joystick.centerX;
-                let dy = joystick.currentY - joystick.centerY;
-                let dist = Math.hypot(dx, dy);
+                let jdx = joystick.currentX - joystick.centerX;
+                let jdy = joystick.currentY - joystick.centerY;
+                let jdist = Math.hypot(jdx, jdy);
                
-                if (dist > joystick.radius) {
-                    dx = dx / dist * joystick.radius;
-                    dy = dy / dist * joystick.radius;
+                if (jdist > joystick.radius) {
+                    jdx = jdx / jdist * joystick.radius;
+                    jdy = jdy / jdist * joystick.radius;
                 }
                
                 ctx.fillStyle = 'rgba(150,150,150,0.8)';
                 ctx.beginPath();
-                ctx.arc(joystick.centerX + dx, joystick.centerY + dy, joystick.radius * 0.5, 0, Math.PI * 2);
+                ctx.arc(joystick.centerX + jdx, joystick.centerY + jdy, joystick.radius * 0.5, 0, Math.PI * 2);
                 ctx.fill();
             }
            
