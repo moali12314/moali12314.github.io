@@ -170,7 +170,7 @@
                     let originalMapWidth = mapImg.width;
                     let originalMapHeight = mapImg.height;
                     if (isMobile) {
-                        const scale = Math.min(SCREEN_WIDTH / originalMapWidth, SCREEN_HEIGHT / originalMapHeight) * 0.5; // Уменьшили масштаб до 50% для мобильных (было 70%)
+                        const scale = Math.min(SCREEN_WIDTH / originalMapWidth, SCREEN_HEIGHT / originalMapHeight) * 0.4; // Уменьшили масштаб до 40% для мобильных (было 50%)
                         MAP_WIDTH = originalMapWidth * scale;
                         MAP_HEIGHT = originalMapHeight * scale;
                     } else {
@@ -190,8 +190,8 @@
                     let originalCharHeight = charImg.height;
                     if (isMobile) {
                         const mapScale = MAP_WIDTH / mapImg.width;
-                        charWidth = originalCharWidth * mapScale * 0.8; // Дополнительно уменьшили персонажа до 80% от масштаба карты
-                        charHeight = originalCharHeight * mapScale * 0.8;
+                        charWidth = originalCharWidth * mapScale * 0.7; // Дополнительно уменьшили персонажа до 70% от масштаба карты (было 80%)
+                        charHeight = originalCharHeight * mapScale * 0.7;
                         charSpeed *= mapScale;
                     } else {
                         charWidth = originalCharWidth;
@@ -319,7 +319,7 @@
             if (charLoaded) {
                 ctx.drawImage(charImg, screenCharX, screenCharY, charWidth, charHeight);
             } else {
-                ctx.fillStyle = 'blue';
+                ctx.fillStyle = 'green';
                 ctx.fillRect(screenCharX, screenCharY, charWidth, charHeight);
             }
             // Джойстик визуализация
