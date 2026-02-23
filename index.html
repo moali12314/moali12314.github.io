@@ -169,14 +169,9 @@
                 mapImg.onload = () => {
                     let originalMapWidth = mapImg.width;
                     let originalMapHeight = mapImg.height;
-                    if (isMobile) {
-                        const scale = Math.min(SCREEN_WIDTH / originalMapWidth, SCREEN_HEIGHT / originalMapHeight) * 0.4; // Уменьшили масштаб до 40% для мобильных (было 50%)
-                        MAP_WIDTH = originalMapWidth * scale;
-                        MAP_HEIGHT = originalMapHeight * scale;
-                    } else {
-                        MAP_WIDTH = originalMapWidth;
-                        MAP_HEIGHT = originalMapHeight;
-                    }
+                    const scale = Math.max(SCREEN_WIDTH / originalMapWidth, SCREEN_HEIGHT / originalMapHeight);
+                    MAP_WIDTH = originalMapWidth * scale;
+                    MAP_HEIGHT = originalMapHeight * scale;
                     mapLoaded = true;
                     resolve();
                 };
@@ -188,15 +183,10 @@
                 charImg.onload = () => {
                     let originalCharWidth = charImg.width;
                     let originalCharHeight = charImg.height;
-                    if (isMobile) {
-                        const mapScale = MAP_WIDTH / mapImg.width;
-                        charWidth = originalCharWidth * mapScale * 0.7; // Дополнительно уменьшили персонажа до 70% от масштаба карты (было 80%)
-                        charHeight = originalCharHeight * mapScale * 0.7;
-                        charSpeed *= mapScale;
-                    } else {
-                        charWidth = originalCharWidth;
-                        charHeight = originalCharHeight;
-                    }
+                    const scale = MAP_WIDTH / mapImg.width;
+                    charWidth = originalCharWidth * scale;
+                    charHeight = originalCharHeight * scale;
+                    charSpeed *= scale;
                     charLoaded = true;
                     resolve();
                 };
